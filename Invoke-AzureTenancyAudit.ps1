@@ -241,9 +241,6 @@ Write-Status "Init" "Tenant: $($context.Tenant.Id)"
 # ============================================================
 # SECTION 1: MANAGEMENT GROUPS
 # ============================================================
-if (Test-SectionLoaded "ManagementGroups") {
-    Write-Status "MgmtGroups" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "MgmtGroups" "Collecting management group hierarchy..."
 
@@ -294,7 +291,6 @@ catch {
     Add-Gap "ManagementGroups" "Unable to collect management group data - check permissions (Management Group Reader required)" "High"
 }
 Save-Checkpoint
-} # end section-skip
 
 # ============================================================
 # SECTION 2: SUBSCRIPTIONS
@@ -606,9 +602,6 @@ else {
 # ============================================================
 # SECTION 4: NETWORKING (per subscription)
 # ============================================================
-if (Test-SectionLoaded "Networking") {
-    Write-Status "Networking" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Networking" "Collecting networking configuration across all subscriptions..."
 
@@ -984,8 +977,6 @@ foreach ($sub in $allSubs) {
 }
 
 $tenancyData.Sections["Networking"] = [ordered]@{
-}
-Save-Checkpoint
     VirtualNetworks      = $allVNets
     Subnets              = $allSubnets
     NSGRules             = $allNSGs
@@ -1006,6 +997,7 @@ Save-Checkpoint
     PrivateEndpoints     = $allPrivateEndpoints
     NSGFlowLogs          = $allNsgFlowLogs
 }
+Save-Checkpoint
 
 Write-Status "Networking" "VNets: $($allVNets.Count), Subnets: $($allSubnets.Count), NSG Rules: $($allNSGs.Count), Peerings: $($allPeerings.Count)" "Success"
 
@@ -1017,9 +1009,6 @@ Add-Recommendation "Networking" "Implement hub-spoke network topology with Azure
 # ============================================================
 # SECTION 5: COMPUTE (VMs, AVD, etc.)
 # ============================================================
-if (Test-SectionLoaded "Compute") {
-    Write-Status "Compute" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Compute" "Collecting compute resources across all subscriptions..."
 
@@ -1213,8 +1202,6 @@ foreach ($sub in $allSubs) {
 }
 
 $tenancyData.Sections["Compute"] = [ordered]@{
-}
-Save-Checkpoint
     VirtualMachines    = $allVMs
     VMExtensions       = $allVMExtensions
     AvailabilitySets   = $allAvailSets
@@ -1225,6 +1212,7 @@ Save-Checkpoint
     AVDSessionHosts    = $allAVDSessionHosts
     AVDAppGroups       = $allAVDAppGroups
 }
+Save-Checkpoint
 
 Write-Status "Compute" "VMs: $($allVMs.Count), Extensions: $($allVMExtensions.Count), AVD Pools: $($allAVDHostPools.Count)" "Success"
 
@@ -1242,9 +1230,6 @@ if ($untaggedVMs.Count -gt 0) {
 # ============================================================
 # SECTION 6: STORAGE
 # ============================================================
-if (Test-SectionLoaded "Storage") {
-    Write-Status "Storage" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Storage" "Collecting storage accounts..."
 
@@ -1286,7 +1271,6 @@ foreach ($sub in $allSubs) {
 
 $tenancyData.Sections["Storage"] = $allStorageAccounts
 Save-Checkpoint
-}
 Write-Status "Storage" "Found $($allStorageAccounts.Count) storage accounts" "Success"
 
 Add-Recommendation "Storage" "Enable soft delete for blob storage to protect against accidental deletion." "Medium"
@@ -1296,9 +1280,6 @@ Add-Recommendation "Storage" "Use Private Endpoints for storage accounts to rest
 # ============================================================
 # SECTION 7: BACKUP & RECOVERY
 # ============================================================
-if (Test-SectionLoaded "Backup") {
-    Write-Status "Backup" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Backup" "Collecting backup configuration..."
 
@@ -1452,8 +1433,6 @@ if ($unbacked.Count -gt 0) {
 }
 
 $tenancyData.Sections["Backup"] = [ordered]@{
-}
-Save-Checkpoint
     RecoveryVaults     = $allVaults
     BackupPolicies     = $allBackupPolicies
     BackupItems        = $allBackupItems
@@ -1461,6 +1440,7 @@ Save-Checkpoint
     ASRReplicatedItems = $allASRItems
     ASRPolicies        = $allASRPolicies
 }
+Save-Checkpoint
 
 Write-Status "Backup" "Vaults: $($allVaults.Count), Policies: $($allBackupPolicies.Count), Protected Items: $($allBackupItems.Count), Unprotected VMs: $($unbacked.Count)" "Success"
 
@@ -1471,9 +1451,6 @@ Add-Recommendation "Backup" "Consider Azure Site Recovery for critical workloads
 # ============================================================
 # SECTION 8: SECURITY (Defender for Cloud)
 # ============================================================
-if (Test-SectionLoaded "Security") {
-    Write-Status "Security" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Security" "Collecting security configuration..."
 
@@ -1567,13 +1544,12 @@ if ($serversDefender.Count -eq 0) {
 }
 
 $tenancyData.Sections["Security"] = [ordered]@{
-}
-Save-Checkpoint
     DefenderPlans           = $allDefenderPlans
     SecureScores            = $allSecureScores
     KeyVaults               = $allKeyVaults
     DefenderRecommendations = $allDefenderRecs
 }
+Save-Checkpoint
 
 Write-Status "Security" "Defender plans: $($allDefenderPlans.Count), Key Vaults: $($allKeyVaults.Count)" "Success"
 
@@ -1584,9 +1560,6 @@ Add-Recommendation "Security" "Migrate Key Vaults to RBAC authorisation model fo
 # ============================================================
 # SECTION 9: GOVERNANCE & POLICY
 # ============================================================
-if (Test-SectionLoaded "Policy") {
-    Write-Status "Policy" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Policy" "Collecting Azure Policy assignments and compliance..."
 
@@ -1699,8 +1672,6 @@ if ($missingStandard.Count -gt 0) {
 }
 
 $tenancyData.Sections["Policy"] = [ordered]@{
-}
-Save-Checkpoint
     PolicyAssignments   = $allPolicyAssignments
     PolicyCompliance    = $allPolicyCompliance
     MissingStdPolicies  = $missingStandard
@@ -1708,6 +1679,7 @@ Save-Checkpoint
     CustomRoles         = $allCustomRoles
     PolicyExemptions    = $allPolicyExemptions
 }
+Save-Checkpoint
 
 Write-Status "Policy" "Policy assignments: $($allPolicyAssignments.Count), Compliance records: $($allPolicyCompliance.Count)" "Success"
 
@@ -1718,9 +1690,6 @@ Add-Recommendation "Governance-Policy" "Set expiry dates on all policy exemption
 # ============================================================
 # SECTION 10: RBAC
 # ============================================================
-if (Test-SectionLoaded "RBAC") {
-    Write-Status "RBAC" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "RBAC" "Collecting role assignments..."
 
@@ -1754,7 +1723,6 @@ if ($directUserAssignments.Count -gt $auditConfig.directUserAssignmentThreshold)
 
 $tenancyData.Sections["RBAC"] = $allRBAC
 Save-Checkpoint
-}
 Write-Status "RBAC" "Found $($allRBAC.Count) role assignments" "Success"
 
 Add-Recommendation "RBAC" "Implement Privileged Identity Management (PIM) for all privileged roles." "High"
@@ -1764,9 +1732,6 @@ Add-Recommendation "RBAC" "Review and remove stale role assignments quarterly." 
 # ============================================================
 # SECTION 11: TAGS AUDIT
 # ============================================================
-if (Test-SectionLoaded "Tags") {
-    Write-Status "Tags" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Tags" "Auditing resource tagging across all subscriptions..."
 
@@ -1828,13 +1793,12 @@ if ($lowTaggingSubs.Count -gt 0) {
 }
 
 $tenancyData.Sections["Tags"] = [ordered]@{
-}
-Save-Checkpoint
     TagAuditSummary  = $tagAudit
     TagKeyUsage      = $tagKeyUsage
     MissingStdTags   = $missingTags
     UniqueTagKeys    = $uniqueTagKeys
 }
+Save-Checkpoint
 
 Write-Status "Tags" "Unique tag keys: $($uniqueTagKeys.Count), Overall tagging: $(($tagAudit | Measure-Object -Property TaggingPercentage -Average).Average)%" "Success"
 
@@ -1844,9 +1808,6 @@ Add-Recommendation "Governance-Tags" "Implement automated tag remediation for un
 # ============================================================
 # SECTION 12: MONITORING & LOGGING
 # ============================================================
-if (Test-SectionLoaded "Monitoring") {
-    Write-Status "Monitoring" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Monitoring" "Collecting monitoring configuration..."
 
@@ -1984,8 +1945,6 @@ if ($allAlertRules.Count -eq 0) {
 }
 
 $tenancyData.Sections["Monitoring"] = [ordered]@{
-}
-Save-Checkpoint
     LogWorkspaces       = $allLogWorkspaces
     AlertRules          = $allAlertRules
     ActionGroups        = $allActionGroups
@@ -1994,6 +1953,7 @@ Save-Checkpoint
     ScheduledQueryRules = $allScheduledQueryRules
     ActivityLogAlerts   = $allActivityLogAlerts
 }
+Save-Checkpoint
 
 Write-Status "Monitoring" "Workspaces: $($allLogWorkspaces.Count), Alerts: $($allAlertRules.Count), Action Groups: $($allActionGroups.Count)" "Success"
 
@@ -2005,9 +1965,6 @@ Add-Recommendation "Monitoring" "Create log-based alert rules for critical failu
 # ============================================================
 # SECTION 13: COST MANAGEMENT
 # ============================================================
-if (Test-SectionLoaded "CostManagement") {
-    Write-Status "CostMgmt" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "CostMgmt" "Collecting cost management configuration..."
 
@@ -2041,7 +1998,6 @@ if ($allBudgets.Count -eq 0) {
 
 $tenancyData.Sections["CostManagement"] = $allBudgets
 Save-Checkpoint
-}
 Write-Status "CostMgmt" "Budgets: $($allBudgets.Count)" "Success"
 
 Add-Recommendation "CostManagement" "Review Azure Advisor cost recommendations monthly." "Medium"
@@ -2051,9 +2007,6 @@ Add-Recommendation "CostManagement" "Remove unattached managed disks and unused 
 # ============================================================
 # SECTION 14: RESOURCE GROUPS & NAMING AUDIT
 # ============================================================
-if (Test-SectionLoaded "ResourceGroups") {
-    Write-Status "ResourceGroups" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "ResourceGroups" "Collecting resource groups and analysing naming conventions..."
 
@@ -2088,15 +2041,11 @@ if ($namingPatterns["Other"] -gt $namingPatterns["rg-*"]) {
 
 $tenancyData.Sections["ResourceGroups"] = $allResourceGroups
 Save-Checkpoint
-}
 Write-Status "ResourceGroups" "Found $($allResourceGroups.Count) resource groups" "Success"
 
 # ============================================================
 # SECTION: APPLICATION SERVICES (PaaS)
 # ============================================================
-if (Test-SectionLoaded "AppServices") {
-    Write-Status "AppServices" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "AppServices" "Collecting App Services..."
 
@@ -2164,21 +2113,17 @@ foreach ($sub in $allSubs) {
 }
 
 $tenancyData.Sections["AppServices"] = [ordered]@{
-}
-Save-Checkpoint
     AppServicePlans = $allAppServicePlans
     WebApps         = $allWebApps
     FunctionApps    = $allFunctionApps
 }
+Save-Checkpoint
 
 Write-Status "AppServices" "Plans: $($allAppServicePlans.Count), Web Apps: $($allWebApps.Count), Function Apps: $($allFunctionApps.Count)" "Success"
 
 # ============================================================
 # SECTION: DATABASES
 # ============================================================
-if (Test-SectionLoaded "Databases") {
-    Write-Status "Databases" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Databases" "Collecting database services..."
 
@@ -2250,21 +2195,17 @@ foreach ($sub in $allSubs) {
 }
 
 $tenancyData.Sections["Databases"] = [ordered]@{
-}
-Save-Checkpoint
     SQLServers    = $allSqlServers
     SQLDatabases  = $allSqlDatabases
     CosmosDB      = $allCosmosAccounts
 }
+Save-Checkpoint
 
 Write-Status "Databases" "SQL Servers: $($allSqlServers.Count), SQL DBs: $($allSqlDatabases.Count), Cosmos: $($allCosmosAccounts.Count)" "Success"
 
 # ============================================================
 # SECTION: CONTAINERS
 # ============================================================
-if (Test-SectionLoaded "Containers") {
-    Write-Status "Containers" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Containers" "Collecting container services..."
 
@@ -2314,20 +2255,16 @@ foreach ($sub in $allSubs) {
 }
 
 $tenancyData.Sections["Containers"] = [ordered]@{
-}
-Save-Checkpoint
     AKSClusters         = $allAKSClusters
     ContainerRegistries  = $allACRs
 }
+Save-Checkpoint
 
 Write-Status "Containers" "AKS: $($allAKSClusters.Count), ACR: $($allACRs.Count)" "Success"
 
 # ============================================================
 # SECTION: AUTOMATION
 # ============================================================
-if (Test-SectionLoaded "Automation") {
-    Write-Status "Automation" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Automation" "Collecting Automation Accounts..."
 
@@ -2366,20 +2303,16 @@ foreach ($sub in $allSubs) {
 }
 
 $tenancyData.Sections["Automation"] = [ordered]@{
-}
-Save-Checkpoint
     AutomationAccounts = $allAutomationAccounts
     Runbooks           = $allRunbooks
 }
+Save-Checkpoint
 
 Write-Status "Automation" "Accounts: $($allAutomationAccounts.Count), Runbooks: $($allRunbooks.Count)" "Success"
 
 # ============================================================
 # SECTION: AZURE ADVISOR
 # ============================================================
-if (Test-SectionLoaded "Advisor") {
-    Write-Status "Advisor" "Loaded from checkpoint - skipping" "Info"
-} else {
 
 Write-Status "Advisor" "Collecting Azure Advisor recommendations..."
 
@@ -2407,7 +2340,6 @@ foreach ($sub in $allSubs) {
 
 $tenancyData.Sections["Advisor"] = $allAdvisorRecs
 Save-Checkpoint
-}
 
 Write-Status "Advisor" "Recommendations: $($allAdvisorRecs.Count)" "Success"
 

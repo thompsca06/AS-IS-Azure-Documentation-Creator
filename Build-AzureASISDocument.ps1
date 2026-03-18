@@ -51,7 +51,7 @@ if (-not (Test-Path $OutputPath)) {
 }
 try {
     $testFile = Join-Path $OutputPath ".write_test_$(Get-Random)"
-    [IO.File]::WriteAllText($testFile, "test")
+    "test" | Out-File -FilePath $testFile -Force
     Remove-Item $testFile -Force
 }
 catch {

@@ -151,7 +151,7 @@ New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 # Validate output path is writable
 try {
     $testFile = Join-Path $OutputPath ".write_test_$(Get-Random)"
-    [IO.File]::WriteAllText($testFile, "test")
+    "test" | Out-File -FilePath $testFile -Force
     Remove-Item $testFile -Force
 }
 catch {

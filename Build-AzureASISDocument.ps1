@@ -97,11 +97,18 @@ if (-not $azModule) {
 }
 Write-Host "[OK] Az module: $($azModule.Version)" -ForegroundColor Green
 
-# Check ImportExcel
+# Check ImportExcel - auto-install if missing
 $ieModule = Get-Module -ListAvailable ImportExcel
 if (-not $ieModule) {
-    Write-Host "[WARN] ImportExcel module not installed. Excel export will be skipped." -ForegroundColor Yellow
-    Write-Host "       Run: Install-Module ImportExcel -Scope CurrentUser" -ForegroundColor Yellow
+    Write-Host "[INFO] ImportExcel module not installed. Installing..." -ForegroundColor Yellow
+    try {
+        Install-Module ImportExcel -Scope CurrentUser -Force -AllowClobber
+        $ieModule = Get-Module -ListAvailable ImportExcel
+        Write-Host "[OK] ImportExcel: $($ieModule.Version) (just installed)" -ForegroundColor Green
+    } catch {
+        Write-Host "[WARN] Failed to install ImportExcel: $($_.Exception.Message)" -ForegroundColor Yellow
+        Write-Host "       Excel export will be skipped." -ForegroundColor Yellow
+    }
 } else {
     Write-Host "[OK] ImportExcel: $($ieModule.Version)" -ForegroundColor Green
 }

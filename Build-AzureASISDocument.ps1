@@ -182,6 +182,39 @@ if (Test-Path $docxOutput) {
 }
 
 # ============================================================
+# STEP 3: Generate diagrams
+# ============================================================
+Write-Host ""
+Write-Host "STEP 3: Generating diagrams..." -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+
+$diagramScript = Join-Path $scriptDir "Generate-StandaloneDiagrams.js"
+if (Test-Path $diagramScript) {
+    & node $diagramScript $jsonFile.FullName $latestDir.FullName --width=1400
+} else {
+    Write-Host "[SKIP] Generate-StandaloneDiagrams.js not found - skipping diagrams" -ForegroundColor Yellow
+}
+
+# ============================================================
+# STEP 4: Package as ZIP
+# ============================================================
+Write-Host ""
+Write-Host "STEP 4: Packaging output as ZIP..." -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+
+$zipName = "${CustomerName}_Azure_ASIS_$(Get-Date -Format 'yyyyMMdd').zip"
+$zipPath = Join-Path $OutputPath $zipName
+
+try {
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    Compress-Archive -Path "$($latestDir.FullName)/*" -DestinationPath $zipPath -Force
+    Write-Host "[OK] ZIP created: $zipPath" -ForegroundColor Green
+} catch {
+    Write-Host "[WARN] ZIP creation failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "       Output files are still available in: $($latestDir.FullName)" -ForegroundColor Yellow
+}
+
+# ============================================================
 # SUMMARY
 # ============================================================
 Write-Host ""
@@ -190,14 +223,25 @@ Write-Host "  BUILD DOCUMENT PIPELINE COMPLETE" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "OUTPUT FILES:" -ForegroundColor Green
-Write-Host "  JSON:   $($jsonFile.FullName)" 
+Write-Host "  JSON:   $($jsonFile.FullName)"
 Write-Host "  Excel:  $(Join-Path $latestDir.FullName "${CustomerName}_Azure_ASIS_BuildDoc.xlsx")"
 Write-Host "  Word:   $docxOutput"
+Write-Host "  ZIP:    $zipPath"
+Write-Host ""
+Write-Host "  Output folder: $($latestDir.FullName)"
 Write-Host ""
 Write-Host "NEXT STEPS:" -ForegroundColor Yellow
-Write-Host "  1. Open the Word document and right-click the Table of Contents > Update Field"
-Write-Host "  2. Review the Gap Analysis section (Section 15) for critical items"
-Write-Host "  3. Review the Operational Compliance Framework (Section 17)"
-Write-Host "  4. Manually add: LogicMonitor details, SMTP config, on-prem firewall rules"
-Write-Host "  5. Agree backup governance, cost management, and incident management with customer"
+Write-Host "  1. Download the ZIP: $zipName"
+Write-Host "  2. Open the Word document and right-click the Table of Contents > Update Field"
+Write-Host "  3. Review the Gap Analysis section for critical items"
+Write-Host "  4. Review the Operational Compliance Framework"
+Write-Host "  5. Manually add: LogicMonitor details, SMTP config, on-prem firewall rules"
 Write-Host ""
+if ($env:ACC_CLOUD) {
+    # Running in Azure Cloud Shell - show download hint
+    Write-Host "CLOUD SHELL TIP:" -ForegroundColor Cyan
+    Write-Host "  To download, click the Upload/Download button in Cloud Shell toolbar," -ForegroundColor White
+    Write-Host "  select 'Download' and enter this path:" -ForegroundColor White
+    Write-Host "  $zipPath" -ForegroundColor Yellow
+    Write-Host ""
+}

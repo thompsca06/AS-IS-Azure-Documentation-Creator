@@ -2503,17 +2503,25 @@ $jsonExport | Out-File -FilePath $jsonPath -Encoding UTF8
 Write-Status "Export" "JSON saved: $jsonPath" "Success"
 
 # ============================================================
+# ============================================================
 # EXPORT: EXCEL (Multi-sheet workbook)
 # ============================================================
 Write-Status "Export" "Exporting Excel workbook..."
 
 $excelPath = Join-Path $OutputPath "$($CustomerName)_Azure_ASIS_BuildDoc.xlsx"
 
-$excelSheetsOK = 0
-$excelSheetsFailed = 0
+function Export-SheetSafe {
+    param($Data, $Path, $SheetName, $TableName)
+    try {
+        $Data | Export-Excel -Path $Path -WorksheetName $SheetName -AutoSize -TableName $TableName -Append
+    }
+    catch {
+        Write-Status "Export" "  Failed sheet '$SheetName': $($_.Exception.Message)" "Warning"
+    }
+}
 
 try {
-    # Summary sheet
+    # Summary
     $summaryData = [PSCustomObject]@{
         CustomerName     = $CustomerName
         CollectionDate   = $tenancyData.CollectionDate
@@ -2530,178 +2538,145 @@ try {
         GapsIdentified   = $tenancyData.Gaps.Count
         Recommendations  = $tenancyData.Recommendations.Count
     }
-    try { $summaryData | Export-Excel -Path $excelPath -WorksheetName "Summary" -AutoSize -TableName "Summary" -Title "$CustomerName - Azure AS-IS Audit Summary" ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Summary': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    
+    $summaryData | Export-Excel -Path $excelPath -WorksheetName "Summary" -AutoSize -TableName "Summary" -Title "$CustomerName - Azure AS-IS Audit Summary"
+
     # Management Groups
     if ($tenancyData.Sections["ManagementGroups"]) {
         $tenancyData.Sections["ManagementGroups"] | Select-Object DisplayName, Name, ParentName, @{N="Subscriptions";E={$_.Subscriptions -join ", "}}, @{N="ChildMGs";E={$_.ChildMGs -join ", "}} |
-            try { Export-Excel -Path $excelPath -WorksheetName "Mgmt Groups" -AutoSize -TableName "MgmtGroups" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Mgmt Groups': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
+            Export-Excel -Path $excelPath -WorksheetName "Mgmt Groups" -AutoSize -TableName "MgmtGroups" -Append
     }
-    
+
     # Subscriptions
-    try { $subData | Export-Excel -Path $excelPath -WorksheetName "Subscriptions" -AutoSize -TableName "Subscriptions" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Subscriptions': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    
-    # Identity (if collected)
+    $subData | Export-Excel -Path $excelPath -WorksheetName "Subscriptions" -AutoSize -TableName "Subscriptions" -Append
+
+    # Identity
     if ($tenancyData.Sections["Identity"]) {
         if ($tenancyData.Sections["Identity"].ConditionalAccess) {
-            $tenancyData.Sections["Identity"].ConditionalAccess |
-                try { Export-Excel -Path $excelPath -WorksheetName "Conditional Access" -AutoSize -TableName "ConditionalAccess" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Conditional Access': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
+            Export-SheetSafe -Data $tenancyData.Sections["Identity"].ConditionalAccess -Path $excelPath -SheetName "Conditional Access" -TableName "ConditionalAccess"
         }
         if ($tenancyData.Sections["Identity"].DirectoryRoles) {
-            $tenancyData.Sections["Identity"].DirectoryRoles |
-                try { Export-Excel -Path $excelPath -WorksheetName "Directory Roles" -AutoSize -TableName "DirectoryRoles" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Directory Roles': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
+            Export-SheetSafe -Data $tenancyData.Sections["Identity"].DirectoryRoles -Path $excelPath -SheetName "Directory Roles" -TableName "DirectoryRoles"
         }
         if ($tenancyData.Sections["Identity"].AppRegistrations -and $tenancyData.Sections["Identity"].AppRegistrations.Count -gt 0) {
-            $tenancyData.Sections["Identity"].AppRegistrations |
-                try { Export-Excel -Path $excelPath -WorksheetName "App Registrations" -AutoSize -TableName "AppRegistrations" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'App Registrations': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
+            Export-SheetSafe -Data $tenancyData.Sections["Identity"].AppRegistrations -Path $excelPath -SheetName "App Registrations" -TableName "AppRegistrations"
         }
     }
-    
-    # Networking sheets
-    try { $allVNets | Export-Excel -Path $excelPath -WorksheetName "Virtual Networks" -AutoSize -TableName "VNets" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Virtual Networks': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    try { $allSubnets | Export-Excel -Path $excelPath -WorksheetName "Subnets" -AutoSize -TableName "Subnets" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Subnets': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    if ($allPeerings.Count -gt 0) { try { $allPeerings | Export-Excel -Path $excelPath -WorksheetName "VNet Peerings" -AutoSize -TableName "Peerings" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'VNet Peerings': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allNSGs.Count -gt 0) { try { $allNSGs | Export-Excel -Path $excelPath -WorksheetName "NSG Rules" -AutoSize -TableName "NSGRules" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'NSG Rules': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allRouteTables.Count -gt 0) { try { $allRouteTables | Export-Excel -Path $excelPath -WorksheetName "Route Tables" -AutoSize -TableName "RouteTables" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Route Tables': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allVPNGateways.Count -gt 0) { try { $allVPNGateways | Export-Excel -Path $excelPath -WorksheetName "VPN Gateways" -AutoSize -TableName "VPNGateways" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'VPN Gateways': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allLocalNetGateways.Count -gt 0) { try { $allLocalNetGateways | Export-Excel -Path $excelPath -WorksheetName "Local Net Gateways" -AutoSize -TableName "LNGs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Local Net Gateways': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allConnections.Count -gt 0) { try { $allConnections | Export-Excel -Path $excelPath -WorksheetName "VPN Connections" -AutoSize -TableName "VPNConns" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'VPN Connections': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allBastions.Count -gt 0) { try { $allBastions | Export-Excel -Path $excelPath -WorksheetName "Bastions" -AutoSize -TableName "Bastions" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Bastions': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allPrivateDNSZones.Count -gt 0) { try { $allPrivateDNSZones | Export-Excel -Path $excelPath -WorksheetName "Private DNS" -AutoSize -TableName "PrivateDNS" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Private DNS': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    try { $allPublicIPs | Export-Excel -Path $excelPath -WorksheetName "Public IPs" -AutoSize -TableName "PublicIPs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Public IPs': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    if ($allFirewalls.Count -gt 0) { try { $allFirewalls | Export-Excel -Path $excelPath -WorksheetName "Firewalls" -AutoSize -TableName "Firewalls" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Firewalls': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allAppGateways.Count -gt 0) { try { $allAppGateways | Export-Excel -Path $excelPath -WorksheetName "App Gateways" -AutoSize -TableName "AppGateways" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'App Gateways': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allLoadBalancers.Count -gt 0) { try { $allLoadBalancers | Export-Excel -Path $excelPath -WorksheetName "Load Balancers" -AutoSize -TableName "LoadBalancers" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Load Balancers': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allNatGateways.Count -gt 0) { try { $allNatGateways | Export-Excel -Path $excelPath -WorksheetName "NAT Gateways" -AutoSize -TableName "NATGateways" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'NAT Gateways': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allExpressRoutes.Count -gt 0) { try { $allExpressRoutes | Export-Excel -Path $excelPath -WorksheetName "ExpressRoute" -AutoSize -TableName "ExpressRoutes" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'ExpressRoute': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allDdosPlans.Count -gt 0) { try { $allDdosPlans | Export-Excel -Path $excelPath -WorksheetName "DDoS Plans" -AutoSize -TableName "DdosPlans" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'DDoS Plans': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allPrivateEndpoints.Count -gt 0) { try { $allPrivateEndpoints | Export-Excel -Path $excelPath -WorksheetName "Private Endpoints" -AutoSize -TableName "PrivateEndpoints" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Private Endpoints': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allNsgFlowLogs.Count -gt 0) { try { $allNsgFlowLogs | Export-Excel -Path $excelPath -WorksheetName "NSG Flow Logs" -AutoSize -TableName "NsgFlowLogs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'NSG Flow Logs': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+
+    # Networking
+    Export-SheetSafe -Data $allVNets -Path $excelPath -SheetName "Virtual Networks" -TableName "VNets"
+    Export-SheetSafe -Data $allSubnets -Path $excelPath -SheetName "Subnets" -TableName "Subnets"
+    if ($allPeerings.Count -gt 0) { Export-SheetSafe -Data $allPeerings -Path $excelPath -SheetName "VNet Peerings" -TableName "Peerings" }
+    if ($allNSGs.Count -gt 0) { Export-SheetSafe -Data $allNSGs -Path $excelPath -SheetName "NSG Rules" -TableName "NSGRules" }
+    if ($allRouteTables.Count -gt 0) { Export-SheetSafe -Data $allRouteTables -Path $excelPath -SheetName "Route Tables" -TableName "RouteTables" }
+    if ($allVPNGateways.Count -gt 0) { Export-SheetSafe -Data $allVPNGateways -Path $excelPath -SheetName "VPN Gateways" -TableName "VPNGateways" }
+    if ($allLocalNetGateways.Count -gt 0) { Export-SheetSafe -Data $allLocalNetGateways -Path $excelPath -SheetName "Local Net Gateways" -TableName "LNGs" }
+    if ($allConnections.Count -gt 0) { Export-SheetSafe -Data $allConnections -Path $excelPath -SheetName "VPN Connections" -TableName "VPNConns" }
+    if ($allBastions.Count -gt 0) { Export-SheetSafe -Data $allBastions -Path $excelPath -SheetName "Bastions" -TableName "Bastions" }
+    if ($allPrivateDNSZones.Count -gt 0) { Export-SheetSafe -Data $allPrivateDNSZones -Path $excelPath -SheetName "Private DNS" -TableName "PrivateDNS" }
+    Export-SheetSafe -Data $allPublicIPs -Path $excelPath -SheetName "Public IPs" -TableName "PublicIPs"
+    if ($allFirewalls.Count -gt 0) { Export-SheetSafe -Data $allFirewalls -Path $excelPath -SheetName "Firewalls" -TableName "Firewalls" }
+    if ($allAppGateways.Count -gt 0) { Export-SheetSafe -Data $allAppGateways -Path $excelPath -SheetName "App Gateways" -TableName "AppGateways" }
+    if ($allLoadBalancers.Count -gt 0) { Export-SheetSafe -Data $allLoadBalancers -Path $excelPath -SheetName "Load Balancers" -TableName "LoadBalancers" }
+    if ($allNatGateways.Count -gt 0) { Export-SheetSafe -Data $allNatGateways -Path $excelPath -SheetName "NAT Gateways" -TableName "NATGateways" }
+    if ($allExpressRoutes.Count -gt 0) { Export-SheetSafe -Data $allExpressRoutes -Path $excelPath -SheetName "ExpressRoute" -TableName "ExpressRoutes" }
+    if ($allDdosPlans.Count -gt 0) { Export-SheetSafe -Data $allDdosPlans -Path $excelPath -SheetName "DDoS Plans" -TableName "DdosPlans" }
+    if ($allPrivateEndpoints.Count -gt 0) { Export-SheetSafe -Data $allPrivateEndpoints -Path $excelPath -SheetName "Private Endpoints" -TableName "PrivateEndpoints" }
+    if ($allNsgFlowLogs.Count -gt 0) { Export-SheetSafe -Data $allNsgFlowLogs -Path $excelPath -SheetName "NSG Flow Logs" -TableName "NsgFlowLogs" }
 
     # Compute
-    try { $allVMs | Export-Excel -Path $excelPath -WorksheetName "Virtual Machines" -AutoSize -TableName "VMs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Virtual Machines': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    if ($allVMExtensions.Count -gt 0) { try { $allVMExtensions | Export-Excel -Path $excelPath -WorksheetName "VM Extensions" -AutoSize -TableName "VMExtensions" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'VM Extensions': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allAVDHostPools.Count -gt 0) { try { $allAVDHostPools | Export-Excel -Path $excelPath -WorksheetName "AVD Host Pools" -AutoSize -TableName "AVDPools" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'AVD Host Pools': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allAVDSessionHosts.Count -gt 0) { try { $allAVDSessionHosts | Export-Excel -Path $excelPath -WorksheetName "AVD Session Hosts" -AutoSize -TableName "AVDHosts" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'AVD Session Hosts': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allManagedDisks.Count -gt 0) { try { $allManagedDisks | Export-Excel -Path $excelPath -WorksheetName "Managed Disks" -AutoSize -TableName "ManagedDisks" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Managed Disks': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allSnapshots.Count -gt 0) { try { $allSnapshots | Export-Excel -Path $excelPath -WorksheetName "Snapshots" -AutoSize -TableName "Snapshots" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Snapshots': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allVMSS.Count -gt 0) { try { $allVMSS | Export-Excel -Path $excelPath -WorksheetName "VM Scale Sets" -AutoSize -TableName "VMSS" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'VM Scale Sets': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    Export-SheetSafe -Data $allVMs -Path $excelPath -SheetName "Virtual Machines" -TableName "VMs"
+    if ($allVMExtensions.Count -gt 0) { Export-SheetSafe -Data $allVMExtensions -Path $excelPath -SheetName "VM Extensions" -TableName "VMExtensions" }
+    if ($allAVDHostPools.Count -gt 0) { Export-SheetSafe -Data $allAVDHostPools -Path $excelPath -SheetName "AVD Host Pools" -TableName "AVDPools" }
+    if ($allAVDSessionHosts.Count -gt 0) { Export-SheetSafe -Data $allAVDSessionHosts -Path $excelPath -SheetName "AVD Session Hosts" -TableName "AVDHosts" }
+    if ($allManagedDisks.Count -gt 0) { Export-SheetSafe -Data $allManagedDisks -Path $excelPath -SheetName "Managed Disks" -TableName "ManagedDisks" }
+    if ($allSnapshots.Count -gt 0) { Export-SheetSafe -Data $allSnapshots -Path $excelPath -SheetName "Snapshots" -TableName "Snapshots" }
+    if ($allVMSS.Count -gt 0) { Export-SheetSafe -Data $allVMSS -Path $excelPath -SheetName "VM Scale Sets" -TableName "VMSS" }
 
     # Storage
-    try { $allStorageAccounts | Export-Excel -Path $excelPath -WorksheetName "Storage Accounts" -AutoSize -TableName "StorageAccts" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Storage Accounts': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    
+    Export-SheetSafe -Data $allStorageAccounts -Path $excelPath -SheetName "Storage Accounts" -TableName "StorageAccts"
+
     # Backup
-    if ($allVaults.Count -gt 0) { try { $allVaults | Export-Excel -Path $excelPath -WorksheetName "Recovery Vaults" -AutoSize -TableName "RSVaults" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Recovery Vaults': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allBackupPolicies.Count -gt 0) { try { $allBackupPolicies | Export-Excel -Path $excelPath -WorksheetName "Backup Policies" -AutoSize -TableName "BackupPolicies" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Backup Policies': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allBackupItems.Count -gt 0) { try { $allBackupItems | Export-Excel -Path $excelPath -WorksheetName "Backup Items" -AutoSize -TableName "BackupItems" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Backup Items': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($unbacked.Count -gt 0) {
-        $unbacked | Select-Object VMName, Subscription, VMSize |
-            try { Export-Excel -Path $excelPath -WorksheetName "Unprotected VMs" -AutoSize -TableName "UnprotectedVMs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Unprotected VMs': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    }
-    if ($allASRItems.Count -gt 0) { try { $allASRItems | Export-Excel -Path $excelPath -WorksheetName "ASR Replicated Items" -AutoSize -TableName "ASRItems" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'ASR Replicated Items': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allASRPolicies.Count -gt 0) { try { $allASRPolicies | Export-Excel -Path $excelPath -WorksheetName "ASR Policies" -AutoSize -TableName "ASRPolicies" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'ASR Policies': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allVaults.Count -gt 0) { Export-SheetSafe -Data $allVaults -Path $excelPath -SheetName "Recovery Vaults" -TableName "RSVaults" }
+    if ($allBackupPolicies.Count -gt 0) { Export-SheetSafe -Data $allBackupPolicies -Path $excelPath -SheetName "Backup Policies" -TableName "BackupPolicies" }
+    if ($allBackupItems.Count -gt 0) { Export-SheetSafe -Data $allBackupItems -Path $excelPath -SheetName "Backup Items" -TableName "BackupItems" }
+    if ($unbacked.Count -gt 0) { Export-SheetSafe -Data ($unbacked | Select-Object VMName, Subscription, VMSize) -Path $excelPath -SheetName "Unprotected VMs" -TableName "UnprotectedVMs" }
+    if ($allASRItems.Count -gt 0) { Export-SheetSafe -Data $allASRItems -Path $excelPath -SheetName "ASR Replicated Items" -TableName "ASRItems" }
+    if ($allASRPolicies.Count -gt 0) { Export-SheetSafe -Data $allASRPolicies -Path $excelPath -SheetName "ASR Policies" -TableName "ASRPolicies" }
 
     # Security
-    if ($allDefenderPlans.Count -gt 0) { try { $allDefenderPlans | Export-Excel -Path $excelPath -WorksheetName "Defender Plans" -AutoSize -TableName "DefenderPlans" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Defender Plans': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allSecureScores.Count -gt 0) { try { $allSecureScores | Export-Excel -Path $excelPath -WorksheetName "Secure Scores" -AutoSize -TableName "SecureScores" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Secure Scores': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allKeyVaults.Count -gt 0) { try { $allKeyVaults | Export-Excel -Path $excelPath -WorksheetName "Key Vaults" -AutoSize -TableName "KeyVaults" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Key Vaults': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allDefenderRecs.Count -gt 0) { try { $allDefenderRecs | Export-Excel -Path $excelPath -WorksheetName "Defender Recs" -AutoSize -TableName "DefenderRecs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Defender Recs': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allDefenderPlans.Count -gt 0) { Export-SheetSafe -Data $allDefenderPlans -Path $excelPath -SheetName "Defender Plans" -TableName "DefenderPlans" }
+    if ($allSecureScores.Count -gt 0) { Export-SheetSafe -Data $allSecureScores -Path $excelPath -SheetName "Secure Scores" -TableName "SecureScores" }
+    if ($allKeyVaults.Count -gt 0) { Export-SheetSafe -Data $allKeyVaults -Path $excelPath -SheetName "Key Vaults" -TableName "KeyVaults" }
+    if ($allDefenderRecs.Count -gt 0) { Export-SheetSafe -Data $allDefenderRecs -Path $excelPath -SheetName "Defender Recs" -TableName "DefenderRecs" }
 
     # RBAC
-    try { $allRBAC | Export-Excel -Path $excelPath -WorksheetName "RBAC Assignments" -AutoSize -TableName "RBAC" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'RBAC Assignments': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    
+    Export-SheetSafe -Data $allRBAC -Path $excelPath -SheetName "RBAC Assignments" -TableName "RBAC"
+
     # Policy
-    if ($allPolicyAssignments.Count -gt 0) { try { $allPolicyAssignments | Export-Excel -Path $excelPath -WorksheetName "Policy Assignments" -AutoSize -TableName "PolicyAssign" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Policy Assignments': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allPolicyCompliance.Count -gt 0) { try { $allPolicyCompliance | Export-Excel -Path $excelPath -WorksheetName "Policy Compliance" -AutoSize -TableName "PolicyCompliance" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Policy Compliance': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allResourceLocks.Count -gt 0) { try { $allResourceLocks | Export-Excel -Path $excelPath -WorksheetName "Resource Locks" -AutoSize -TableName "ResourceLocks" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Resource Locks': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allCustomRoles.Count -gt 0) { try { $allCustomRoles | Export-Excel -Path $excelPath -WorksheetName "Custom Roles" -AutoSize -TableName "CustomRoles" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Custom Roles': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allPolicyExemptions.Count -gt 0) { try { $allPolicyExemptions | Export-Excel -Path $excelPath -WorksheetName "Policy Exemptions" -AutoSize -TableName "PolicyExemptions" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Policy Exemptions': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allPolicyAssignments.Count -gt 0) { Export-SheetSafe -Data $allPolicyAssignments -Path $excelPath -SheetName "Policy Assignments" -TableName "PolicyAssign" }
+    if ($allPolicyCompliance.Count -gt 0) { Export-SheetSafe -Data $allPolicyCompliance -Path $excelPath -SheetName "Policy Compliance" -TableName "PolicyCompliance" }
+    if ($allResourceLocks.Count -gt 0) { Export-SheetSafe -Data $allResourceLocks -Path $excelPath -SheetName "Resource Locks" -TableName "ResourceLocks" }
+    if ($allCustomRoles.Count -gt 0) { Export-SheetSafe -Data $allCustomRoles -Path $excelPath -SheetName "Custom Roles" -TableName "CustomRoles" }
+    if ($allPolicyExemptions.Count -gt 0) { Export-SheetSafe -Data $allPolicyExemptions -Path $excelPath -SheetName "Policy Exemptions" -TableName "PolicyExemptions" }
 
     # Tags
-    try { $tagAudit | Export-Excel -Path $excelPath -WorksheetName "Tag Audit Summary" -AutoSize -TableName "TagAudit" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Tag Audit Summary': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    if ($tagKeyUsage) { try { $tagKeyUsage | Export-Excel -Path $excelPath -WorksheetName "Tag Key Usage" -AutoSize -TableName "TagUsage" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Tag Key Usage': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    
+    Export-SheetSafe -Data $tagAudit -Path $excelPath -SheetName "Tag Audit Summary" -TableName "TagAudit"
+    if ($tagKeyUsage) { Export-SheetSafe -Data $tagKeyUsage -Path $excelPath -SheetName "Tag Key Usage" -TableName "TagUsage" }
+
     # Monitoring
-    if ($allLogWorkspaces.Count -gt 0) { try { $allLogWorkspaces | Export-Excel -Path $excelPath -WorksheetName "Log Analytics" -AutoSize -TableName "LogWorkspaces" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Log Analytics': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allAlertRules.Count -gt 0) { try { $allAlertRules | Export-Excel -Path $excelPath -WorksheetName "Alert Rules" -AutoSize -TableName "AlertRules" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Alert Rules': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allActionGroups.Count -gt 0) { try { $allActionGroups | Export-Excel -Path $excelPath -WorksheetName "Action Groups" -AutoSize -TableName "ActionGroups" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Action Groups': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allAppInsights.Count -gt 0) { try { $allAppInsights | Export-Excel -Path $excelPath -WorksheetName "App Insights" -AutoSize -TableName "AppInsights" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'App Insights': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allDiagSettings.Count -gt 0) { try { $allDiagSettings | Export-Excel -Path $excelPath -WorksheetName "Diagnostic Settings" -AutoSize -TableName "DiagSettings" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Diagnostic Settings': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allScheduledQueryRules.Count -gt 0) { try { $allScheduledQueryRules | Export-Excel -Path $excelPath -WorksheetName "Scheduled Query Rules" -AutoSize -TableName "ScheduledQueryRules" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Scheduled Query Rules': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allActivityLogAlerts.Count -gt 0) { try { $allActivityLogAlerts | Export-Excel -Path $excelPath -WorksheetName "Activity Log Alerts" -AutoSize -TableName "ActivityLogAlerts" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Activity Log Alerts': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allLogWorkspaces.Count -gt 0) { Export-SheetSafe -Data $allLogWorkspaces -Path $excelPath -SheetName "Log Analytics" -TableName "LogWorkspaces" }
+    if ($allAlertRules.Count -gt 0) { Export-SheetSafe -Data $allAlertRules -Path $excelPath -SheetName "Alert Rules" -TableName "AlertRules" }
+    if ($allActionGroups.Count -gt 0) { Export-SheetSafe -Data $allActionGroups -Path $excelPath -SheetName "Action Groups" -TableName "ActionGroups" }
+    if ($allAppInsights.Count -gt 0) { Export-SheetSafe -Data $allAppInsights -Path $excelPath -SheetName "App Insights" -TableName "AppInsights" }
+    if ($allDiagSettings.Count -gt 0) { Export-SheetSafe -Data $allDiagSettings -Path $excelPath -SheetName "Diagnostic Settings" -TableName "DiagSettings" }
+    if ($allScheduledQueryRules.Count -gt 0) { Export-SheetSafe -Data $allScheduledQueryRules -Path $excelPath -SheetName "Scheduled Query Rules" -TableName "ScheduledQueryRules" }
+    if ($allActivityLogAlerts.Count -gt 0) { Export-SheetSafe -Data $allActivityLogAlerts -Path $excelPath -SheetName "Activity Log Alerts" -TableName "ActivityLogAlerts" }
 
     # Cost
-    if ($allBudgets.Count -gt 0) { try { $allBudgets | Export-Excel -Path $excelPath -WorksheetName "Budgets" -AutoSize -TableName "Budgets" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Budgets': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    
+    if ($allBudgets.Count -gt 0) { Export-SheetSafe -Data $allBudgets -Path $excelPath -SheetName "Budgets" -TableName "Budgets" }
+
     # Resource Groups
-    try { $allResourceGroups | Export-Excel -Path $excelPath -WorksheetName "Resource Groups" -AutoSize -TableName "ResourceGroups" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Resource Groups': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
+    Export-SheetSafe -Data $allResourceGroups -Path $excelPath -SheetName "Resource Groups" -TableName "ResourceGroups"
 
     # App Services
-    if ($allAppServicePlans.Count -gt 0) { try { $allAppServicePlans | Export-Excel -Path $excelPath -WorksheetName "App Service Plans" -AutoSize -TableName "AppServicePlans" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'App Service Plans': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allWebApps.Count -gt 0) { try { $allWebApps | Export-Excel -Path $excelPath -WorksheetName "Web Apps" -AutoSize -TableName "WebApps" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Web Apps': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allFunctionApps.Count -gt 0) { try { $allFunctionApps | Export-Excel -Path $excelPath -WorksheetName "Function Apps" -AutoSize -TableName "FunctionApps" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Function Apps': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allAppServicePlans.Count -gt 0) { Export-SheetSafe -Data $allAppServicePlans -Path $excelPath -SheetName "App Service Plans" -TableName "AppServicePlans" }
+    if ($allWebApps.Count -gt 0) { Export-SheetSafe -Data $allWebApps -Path $excelPath -SheetName "Web Apps" -TableName "WebApps" }
+    if ($allFunctionApps.Count -gt 0) { Export-SheetSafe -Data $allFunctionApps -Path $excelPath -SheetName "Function Apps" -TableName "FunctionApps" }
 
     # Databases
-    if ($allSqlServers.Count -gt 0) { try { $allSqlServers | Export-Excel -Path $excelPath -WorksheetName "SQL Servers" -AutoSize -TableName "SqlServers" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'SQL Servers': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allSqlDatabases.Count -gt 0) { try { $allSqlDatabases | Export-Excel -Path $excelPath -WorksheetName "SQL Databases" -AutoSize -TableName "SqlDatabases" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'SQL Databases': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allCosmosAccounts.Count -gt 0) { try { $allCosmosAccounts | Export-Excel -Path $excelPath -WorksheetName "Cosmos DB" -AutoSize -TableName "CosmosAccounts" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Cosmos DB': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allSqlServers.Count -gt 0) { Export-SheetSafe -Data $allSqlServers -Path $excelPath -SheetName "SQL Servers" -TableName "SqlServers" }
+    if ($allSqlDatabases.Count -gt 0) { Export-SheetSafe -Data $allSqlDatabases -Path $excelPath -SheetName "SQL Databases" -TableName "SqlDatabases" }
+    if ($allCosmosAccounts.Count -gt 0) { Export-SheetSafe -Data $allCosmosAccounts -Path $excelPath -SheetName "Cosmos DB" -TableName "CosmosAccounts" }
 
     # Containers
-    if ($allAKSClusters.Count -gt 0) { try { $allAKSClusters | Export-Excel -Path $excelPath -WorksheetName "AKS Clusters" -AutoSize -TableName "AKSClusters" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'AKS Clusters': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allACRs.Count -gt 0) { try { $allACRs | Export-Excel -Path $excelPath -WorksheetName "Container Registries" -AutoSize -TableName "ACRs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Container Registries': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    if ($allAKSClusters.Count -gt 0) { Export-SheetSafe -Data $allAKSClusters -Path $excelPath -SheetName "AKS Clusters" -TableName "AKSClusters" }
+    if ($allACRs.Count -gt 0) { Export-SheetSafe -Data $allACRs -Path $excelPath -SheetName "Container Registries" -TableName "ACRs" }
 
-    # Automation
-    if ($allAutomationAccounts.Count -gt 0) { try { $allAutomationAccounts | Export-Excel -Path $excelPath -WorksheetName "Automation Accounts" -AutoSize -TableName "AutomationAccounts" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Automation Accounts': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-    if ($allRunbooks.Count -gt 0) { try { $allRunbooks | Export-Excel -Path $excelPath -WorksheetName "Runbooks" -AutoSize -TableName "Runbooks" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Runbooks': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+    # Automation & Advisor
+    if ($allAutomationAccounts.Count -gt 0) { Export-SheetSafe -Data $allAutomationAccounts -Path $excelPath -SheetName "Automation Accounts" -TableName "AutomationAccounts" }
+    if ($allRunbooks.Count -gt 0) { Export-SheetSafe -Data $allRunbooks -Path $excelPath -SheetName "Runbooks" -TableName "Runbooks" }
+    if ($allAdvisorRecs.Count -gt 0) { Export-SheetSafe -Data $allAdvisorRecs -Path $excelPath -SheetName "Advisor Recs" -TableName "AdvisorRecs" }
+    if ($allResourceTypes.Count -gt 0) { Export-SheetSafe -Data $allResourceTypes -Path $excelPath -SheetName "Resource Types" -TableName "ResourceTypes" }
 
-    # Advisor
-    if ($allAdvisorRecs.Count -gt 0) { try { $allAdvisorRecs | Export-Excel -Path $excelPath -WorksheetName "Advisor Recs" -AutoSize -TableName "AdvisorRecs" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Advisor Recs': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-
-    # Resource Graph Summary
-    if ($allResourceTypes.Count -gt 0) { try { $allResourceTypes | Export-Excel -Path $excelPath -WorksheetName "Resource Types" -AutoSize -TableName "ResourceTypes" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Resource Types': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-
-    # Identity Extensions (if collected)
+    # Identity extras
     if ($tenancyData.Sections["Identity"]) {
-        if ($namedLocations.Count -gt 0) { try { $namedLocations | Export-Excel -Path $excelPath -WorksheetName "Named Locations" -AutoSize -TableName "NamedLocations" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Named Locations': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
-        if ($licenseSummary.Count -gt 0) { try { $licenseSummary | Export-Excel -Path $excelPath -WorksheetName "Licenses" -AutoSize -TableName "Licenses" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'Licenses': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ } }
+        if ($namedLocations.Count -gt 0) { Export-SheetSafe -Data $namedLocations -Path $excelPath -SheetName "Named Locations" -TableName "NamedLocations" }
+        if ($licenseSummary.Count -gt 0) { Export-SheetSafe -Data $licenseSummary -Path $excelPath -SheetName "Licenses" -TableName "Licenses" }
     }
 
-    # ====== GAP ANALYSIS & COMPLIANCE (Critical sheets) ======
-    
-    # Gaps
-    if ($tenancyData.Gaps.Count -gt 0) {
-        try { $tenancyData.Gaps | Export-Excel -Path $excelPath -WorksheetName "GAP ANALYSIS" -AutoSize -TableName "Gaps" -Append ` ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'GAP ANALYSIS': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-            -ConditionalText $(
-                New-ConditionalText -Text "Critical" -BackgroundColor Red -ConditionalTextColor White
-                New-ConditionalText -Text "High" -BackgroundColor Orange -ConditionalTextColor White
-                New-ConditionalText -Text "Medium" -BackgroundColor Yellow
-            )
-    }
-    
-    # Recommendations
-    if ($tenancyData.Recommendations.Count -gt 0) {
-        try { $tenancyData.Recommendations | Export-Excel -Path $excelPath -WorksheetName "RECOMMENDATIONS" -AutoSize -TableName "Recommendations" -Append ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'RECOMMENDATIONS': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-    }
-    
-    # Operational Compliance Framework
-    try { $complianceChecklist | Export-Excel -Path $excelPath -WorksheetName "OPERATIONAL COMPLIANCE" -AutoSize -TableName "OpCompliance" -Append ` ; $excelSheetsOK++ } catch { Write-Status "Export" "Failed to export sheet 'OPERATIONAL COMPLIANCE': $($_.Exception.Message)" "Warning"; $excelSheetsFailed++ }
-        -ConditionalText $(
-            New-ConditionalText -Text "NOT CONFIGURED" -BackgroundColor Red -ConditionalTextColor White
-            New-ConditionalText -Text "NOT ENABLED" -BackgroundColor Red -ConditionalTextColor White
-            New-ConditionalText -Text "NOT ASSESSED" -BackgroundColor Orange -ConditionalTextColor White
-            New-ConditionalText -Text "NEEDS IMPROVEMENT" -BackgroundColor Yellow
-            New-ConditionalText -Text "INCONSISTENT" -BackgroundColor Yellow
-            New-ConditionalText -Text "Critical" -BackgroundColor Red -ConditionalTextColor White
-        )
-    
-    Write-Status "Export" "Excel saved: $excelPath ($excelSheetsOK sheets OK, $excelSheetsFailed failed)" "Success"
+    # Gap Analysis & Compliance
+    if ($tenancyData.Gaps.Count -gt 0) { Export-SheetSafe -Data $tenancyData.Gaps -Path $excelPath -SheetName "GAP ANALYSIS" -TableName "Gaps" }
+    if ($tenancyData.Recommendations.Count -gt 0) { Export-SheetSafe -Data $tenancyData.Recommendations -Path $excelPath -SheetName "RECOMMENDATIONS" -TableName "Recommendations" }
+    Export-SheetSafe -Data $complianceChecklist -Path $excelPath -SheetName "OPERATIONAL COMPLIANCE" -TableName "OpCompliance"
+
+    Write-Status "Export" "Excel saved: $excelPath" "Success"
 }
 catch {
     Write-Status "Export" "Excel export failed: $($_.Exception.Message). Ensure ImportExcel module is installed." "Error"
     Write-Status "Export" "Install with: Install-Module ImportExcel -Scope CurrentUser" "Warning"
 }
 
-# ============================================================
+
 # EXPORT: CONSOLE SUMMARY
 # ============================================================
 

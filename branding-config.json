@@ -1,0 +1,35 @@
+{
+  "colors": {
+    "primary":    "2DA58E",
+    "accent":     "B5E5E2",
+    "dark":       "1A6B5A",
+    "light":      "E0F5F3",
+    "lighter":    "F2F2F2",
+    "lighterAlt": "EAEAEA",
+    "text":       "333333",
+    "grey":       "666666",
+    "white":      "FFFFFF",
+    "border":     "FFFFFF",
+    "red":        "C00000",
+    "amber":      "ED7D31",
+    "green":      "548235",
+    "yellow":     "FFF2CC",
+    "redBg":      "FCE4EC",
+    "amberBg":    "FFF3E0",
+    "greenBg":    "E8F5E9"
+  },
+  "page": {
+    "width": 11906,
+    "height": 16838,
+    "margin": 1134
+  },
+  "fonts": {
+    "heading": "Segoe UI Semibold",
+    "body": "Segoe UI"
+  },
+  "company": {
+    "name": "Tieva Ltd",
+    "website": "tieva.co.uk",
+    "classification": "Confidential"
+  }
+}

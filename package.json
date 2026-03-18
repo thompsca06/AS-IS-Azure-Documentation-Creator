@@ -1,0 +1,18 @@
+{
+  "name": "as-is",
+  "version": "1.0.0",
+  "description": "This toolkit automates the collection of Azure tenancy configuration data to populate the AS-IS Build Document template. It interrogates all aspects of an Azure environment via PowerShell Az modules and Microsoft Graph API.",
+  "main": "Generate-BuildDocument.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "docx": "^9.6.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.34.5"
+  }
+}

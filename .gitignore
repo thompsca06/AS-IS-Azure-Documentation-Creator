@@ -1,0 +1,5 @@
+node_modules/
+AzureBuildDoc_Output/
+*.zip
+_checkpoint.json
+test_*.docx

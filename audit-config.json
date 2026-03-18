@@ -1,0 +1,22 @@
+{
+  "maxGlobalAdmins": 5,
+  "minGlobalAdmins": 2,
+  "cafKeywordThreshold": 3,
+  "lowTaggingThreshold": 50,
+  "directUserAssignmentThreshold": 5,
+  "standardPolicies": [
+    "Network interfaces should not have public IPs",
+    "Azure Backup should be enabled for Virtual Machines",
+    "Subnets should have a Network Security Group",
+    "Allowed locations",
+    "Audit VMs that do not use managed disks",
+    "Key vaults should have soft delete enabled"
+  ],
+  "expectedTags": [
+    "Environment",
+    "Owner",
+    "CostCenter",
+    "Application",
+    "Criticality"
+  ]
+}

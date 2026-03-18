@@ -1,338 +1,317 @@
-# Azure Tenancy AS-IS Build Document - Audit Toolkit
+# AS-IS Azure Documentation Creator
 
-## Overview
+Automated Azure tenancy audit toolkit that collects configuration data and generates comprehensive AS-IS Build Documents with diagrams.
 
-This toolkit automates the collection of Azure tenancy configuration data to populate the AS-IS Build Document template. It interrogates all aspects of an Azure environment via PowerShell Az modules and Microsoft Graph API.
+## What It Does
+
+Runs a single command against an Azure tenant and produces:
+
+- **Word Document** (.docx) — 19-section AS-IS Build Document with colour-coded tables, gap analysis, and recommendations
+- **Excel Workbook** (.xlsx) — 40+ sheet detailed data export with conditional formatting
+- **JSON Data** (.json) — Complete structured data for programmatic use
+- **Network Topology Diagram** — Hub-spoke VNet layout with subnet details, NSG status, and appliance badges
+- **Management Group Hierarchy Diagram** — Tree view of MG structure with subscription placement
+- **ZIP Package** — All outputs bundled for easy download
+
+Everything is packaged into a single ZIP file at the end.
+
+---
+
+## Quick Start — Azure Cloud Shell
+
+### 1. Clone and Setup (one time)
+
+```powershell
+git clone https://github.com/thompsca06/AS-IS-Azure-Documentation-Creator.git
+cd AS-IS-Azure-Documentation-Creator
+.\Setup-CloudShell.ps1
+```
+
+This clones the repo, installs Node.js packages, checks PowerShell modules, and verifies your Azure connection.
+
+### 2. Run the Audit
+
+```powershell
+# Azure resources only (recommended first run)
+.\Build-AzureASISDocument.ps1 -CustomerName "Contoso"
+
+# Include Entra ID (requires Graph API permissions — will prompt for device login)
+.\Build-AzureASISDocument.ps1 -CustomerName "Contoso" -IncludeEntra
+
+# Scope to specific subscriptions
+.\Build-AzureASISDocument.ps1 -CustomerName "Contoso" -SubscriptionFilter @("sub-id-1","sub-id-2")
+```
+
+### 3. Download the Output
+
+When complete, you'll see:
+
+```
+OUTPUT FILES:
+  JSON:   ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_ASIS_Data.json
+  Excel:  ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_ASIS_BuildDoc.xlsx
+  Word:   ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_ASIS_Build_Document.docx
+  ZIP:    ./AzureBuildDoc_Output/Contoso_Azure_ASIS_20260318.zip
+```
+
+In Cloud Shell, click the **Upload/Download** button in the toolbar, select **Download**, and enter the ZIP path.
+
+---
+
+## Quick Start — Local Machine (Windows)
+
+### 1. Prerequisites
+
+```powershell
+# Install required modules
+Install-Module Az -Scope CurrentUser -Force
+Install-Module ImportExcel -Scope CurrentUser -Force
+
+# Optional: Entra ID modules (for -IncludeEntra)
+Install-Module Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser -Force
+Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser -Force
+Install-Module Microsoft.Graph.Applications -Scope CurrentUser -Force
+
+# Node.js (download from https://nodejs.org)
+# Then install npm packages:
+npm install
+```
+
+### 2. Connect and Run
+
+```powershell
+Connect-AzAccount
+.\Build-AzureASISDocument.ps1 -CustomerName "Contoso" -IncludeEntra
+```
+
+---
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `Build-AzureASISDocument.ps1` | **One-click pipeline** - runs audit + generates Word doc |
-| `Invoke-AzureTenancyAudit.ps1` | PowerShell script - collects all Azure data → JSON + Excel |
-| `Generate-BuildDocument.js` | Node.js script - reads JSON → produces populated Word doc |
-| `Generate-Diagrams.js` | SVG/PNG diagram generator for MG hierarchy and network topology |
-| `Generate-StandaloneDiagrams.js` | **Standalone diagram generator** - produces diagrams from JSON |
-| `branding-config.json` | Configurable colours, fonts, page layout, company details |
-| `audit-config.json` | Configurable gap analysis thresholds and standards |
-| `Azure_AS-IS_Build_Document_Template.docx` | Blank Word template (for manual use if preferred) |
+| `Build-AzureASISDocument.ps1` | **One-click pipeline** — audit + Word doc + diagrams + ZIP |
+| `Invoke-AzureTenancyAudit.ps1` | Data collection script — all Azure resources → JSON + Excel |
+| `Generate-BuildDocument.js` | Word document generator — reads JSON → 19-section .docx |
+| `Generate-Diagrams.js` | Diagram engine — MG hierarchy + network topology (SVG/PNG) |
+| `Generate-Diagrams.ps1` | **PowerShell wrapper** for standalone diagram generation |
+| `Generate-StandaloneDiagrams.js` | Node.js CLI for standalone diagram generation |
+| `Setup-CloudShell.ps1` | **Cloud Shell setup** — clone, install deps, verify environment |
+| `audit-config.json` | Configurable gap analysis thresholds |
+| `branding-config.json` | White-labelling (colours, fonts, company details) |
+| `Azure_AS-IS_Build_Document_Template.docx` | Blank Word template (manual use) |
 
-## Quick Start (One Command)
+---
 
-```powershell
-# Full audit including Entra ID (Azure AD)
-.\Build-AzureASISDocument.ps1 -CustomerName "Sense" -IncludeEntra
+## Pipeline Steps
 
-# Azure resources only (no Entra ID access needed)
-.\Build-AzureASISDocument.ps1 -CustomerName "Sense"
-```
+The `Build-AzureASISDocument.ps1` pipeline runs 4 steps:
 
-This runs both steps automatically and produces JSON, Excel, and Word outputs.
+| Step | What It Does |
+|------|-------------|
+| **1. Audit** | Runs `Invoke-AzureTenancyAudit.ps1` — collects all Azure resource data across every subscription, exports JSON + Excel, runs gap analysis |
+| **2. Word Doc** | Runs `Generate-BuildDocument.js` — reads the JSON and produces a fully populated, branded Word document |
+| **3. Diagrams** | Runs `Generate-StandaloneDiagrams.js` — creates MG hierarchy and network topology diagrams |
+| **4. ZIP** | Packages all output files into a single ZIP for download |
 
-> **Note:** Use `-IncludeEntra` only when you have access to the Entra ID tenant (Microsoft Graph). Without the flag, the Entra ID section is marked "Not in scope" and no gap is logged. The old `-IncludeGraph` flag still works as an alias.
+Dependencies (ImportExcel, docx npm module) are **auto-installed** if missing.
 
-## Prerequisites
+---
 
-### PowerShell Modules
+## Usage Examples
 
-```powershell
-# Core Azure modules
-Install-Module Az -Scope CurrentUser -Force
+### Generate Diagrams Only
 
-# Excel export
-Install-Module ImportExcel -Scope CurrentUser -Force
-
-# Entra ID / Identity (optional but recommended)
-Install-Module Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser -Force
-Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser -Force
-Install-Module Microsoft.Graph.Applications -Scope CurrentUser -Force
-Install-Module Microsoft.Graph.DirectoryObjects -Scope CurrentUser -Force
-
-# AVD (if applicable)
-Install-Module Az.DesktopVirtualization -Scope CurrentUser -Force
-```
-
-### Permissions Required
-
-| Scope | Permission | Purpose |
-|-------|-----------|---------|
-| Azure RBAC | **Reader** on all subscriptions | Read all Azure resource config |
-| Azure RBAC | **Management Group Reader** | Read MG hierarchy |
-| Entra ID | **Global Reader** (or equiv) | Read tenant config |
-| Graph API | User.Read.All | Read user/group data |
-| Graph API | Policy.Read.All | Read Conditional Access |
-| Graph API | Application.Read.All | Read app registrations |
-| Graph API | RoleManagement.Read.Directory | Read directory roles |
-| Graph API | Directory.Read.All | Read tenant details |
-
-## Usage
-
-### Basic (Azure resources only — no Entra ID)
+If you've already run the audit and just want to regenerate diagrams:
 
 ```powershell
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "CustomerName"
-```
+# Auto-detects latest JSON from output folder
+.\Generate-Diagrams.ps1
 
-### Full audit including Entra ID
-
-```powershell
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "CustomerName" -IncludeEntra
-```
-
-### Scoped to specific subscriptions
-
-```powershell
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "CustomerName" -IncludeEntra -SubscriptionFilter @("sub-id-1", "sub-id-2")
-```
-
-### Custom output location
-
-```powershell
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "CustomerName" -OutputPath "C:\Reports\Azure"
-```
-
-### With custom thresholds
-
-```powershell
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "CustomerName" -ConfigPath ".\audit-config.json"
-```
-
-### Resume interrupted audit
-
-```powershell
-# If an audit was interrupted, resume from the checkpoint:
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "CustomerName" -ResumeFrom ".\AzureBuildDoc_Output\20260226_143000\_checkpoint.json"
-```
-
-### Generate diagrams only
-
-```powershell
-# Generate standalone diagrams from existing JSON data
-node Generate-StandaloneDiagrams.js ".\AzureBuildDoc_Output\20260226_143000\Sense_Azure_ASIS_Data.json"
-
-# Custom width and output directory
-node Generate-StandaloneDiagrams.js data.json ./diagrams --width=1600
-
-# Network diagram only
-node Generate-StandaloneDiagrams.js data.json --net-only
+# Network diagram only, wider
+.\Generate-Diagrams.ps1 -NetOnly -Width 1600
 
 # MG hierarchy only
-node Generate-StandaloneDiagrams.js data.json --mg-only
+.\Generate-Diagrams.ps1 -MgOnly
+
+# SVG format (useful in Cloud Shell without sharp)
+.\Generate-Diagrams.ps1 -Format svg
+
+# Explicit JSON path
+.\Generate-Diagrams.ps1 -JsonPath ".\output\data.json" -OutputDir ".\diagrams"
 ```
 
-## Output
-
-The script produces two files in a timestamped subdirectory:
-
-### 1. JSON (`CustomerName_Azure_ASIS_Data.json`)
-Complete structured data export for programmatic use or feeding into document generation.
-
-### 2. Excel (`CustomerName_Azure_ASIS_BuildDoc.xlsx`)
-Multi-sheet workbook with colour-coded tabs:
-
-| Sheet | Contents |
-|-------|----------|
-| Summary | Collection metadata and resource counts |
-| Mgmt Groups | Management group hierarchy |
-| Subscriptions | All active subscriptions |
-| Conditional Access | CA policies (if -IncludeEntra) |
-| Directory Roles | Entra ID role assignments (if -IncludeEntra) |
-| Virtual Networks | All VNets with address spaces and DNS |
-| Subnets | All subnets with NSG/UDR associations |
-| VNet Peerings | Peering configuration and status |
-| NSG Rules | All custom NSG rules |
-| Route Tables | All UDR routes |
-| VPN Gateways | Gateway configuration |
-| VPN Connections | Connection status |
-| Bastions | Azure Bastion instances |
-| Private DNS | Private DNS zones and links |
-| Public IPs | All public IP addresses |
-| Virtual Machines | All VMs with specs, IPs, disk config, tags |
-| VM Extensions | Installed extensions per VM |
-| AVD Host Pools | Azure Virtual Desktop pools |
-| AVD Session Hosts | Session host status |
-| Storage Accounts | All storage with security settings |
-| Recovery Vaults | Backup vault configuration |
-| Backup Policies | Retention and schedule details |
-| Backup Items | Protected resources |
-| **Unprotected VMs** | **Running VMs with no backup** |
-| Defender Plans | Microsoft Defender for Cloud status |
-| Secure Scores | Security posture scores |
-| Key Vaults | Key vault configuration |
-| RBAC Assignments | All role assignments |
-| Policy Assignments | Azure Policy assignments |
-| Policy Compliance | Compliance state summary |
-| Tag Audit Summary | Tagging percentage per subscription |
-| Tag Key Usage | All tag keys with sample values |
-| Log Analytics | Workspaces and retention |
-| Alert Rules | Configured metric alerts |
-| Action Groups | Alert notification targets |
-| Budgets | Cost management budgets |
-| Resource Groups | All RGs with resource counts |
-| **GAP ANALYSIS** | **All identified gaps with severity** |
-| **RECOMMENDATIONS** | **Improvement recommendations** |
-| **OPERATIONAL COMPLIANCE** | **Compliance framework checklist** |
-
-### Gap Analysis Auto-Detection
-
-The script automatically identifies and flags:
-
-- **Critical**: VMs without backup, NSG rules allowing RDP/SSH from internet, VPN connections not in Connected state, no Conditional Access policies, Defender for Servers not enabled
-- **High**: Subnets without NSGs, missing standard Azure policies, CAF non-compliance, tagging below 50%, no budgets configured
-- **Medium**: Storage accounts with public access, TLS below 1.2, expired app registration credentials, direct user RBAC assignments
-
-### Operational Compliance Framework
-
-The OPERATIONAL COMPLIANCE sheet covers the items you flagged:
-
-1. **Backup governance alignment** - retention vs compliance, roles & responsibilities
-2. **Monitoring & incident management** - LogicMonitor integration, alert routing, SLAs
-3. **Cost management** - budgets, reservations, review cadence
-4. **Security posture** - Defender status, Secure Score, remediation
-5. **Conditional Access** - MFA enforcement, access controls
-6. **Tagging standard** - consistency, mandatory tags, enforcement
-7. **Policy governance** - applied vs missing standard policies
-8. **Disaster recovery** - ASR status, RPO/RTO, testing
-9. **Change management** - process, approvals, communication
-10. **Naming convention** - consistency analysis
-
-## What Still Needs Manual Review
-
-The script cannot capture everything. These items need manual investigation:
-
-| Item | Why Manual | Where to Check |
-|------|-----------|---------------|
-| LogicMonitor integration | Third-party tool, no Azure API | LogicMonitor portal |
-| SMTP relay config | Application-level config | Server config / Exchange |
-| On-prem firewall rules | Not accessible via Azure API | FortiGate / on-prem mgmt |
-| Incident management process | Process, not technical config | Existing SOPs / agreements |
-| Backup roles & responsibilities | Organisational, not technical | RACI matrix / contracts |
-| Compliance requirements | Customer-specific | Customer governance docs |
-| DR testing schedule | Process-based | Operational runbooks |
-| ExpressRoute provider details | Contract-based | Provider portal / contracts |
-
-## Populating the Word Document
-
-### Option 1: Automatic (Recommended)
-
-The pipeline handles everything:
+### Two-Step Workflow (Audit First, Generate Later)
 
 ```powershell
-# Full pipeline - audit + Word doc in one go (with Entra ID)
-.\Build-AzureASISDocument.ps1 -CustomerName "Sense" -IncludeEntra
-
-# Without Entra ID (no Graph access needed)
-.\Build-AzureASISDocument.ps1 -CustomerName "Sense"
-```
-
-### Option 2: Two-Step (Audit first, generate later)
-
-```powershell
-# Step 1: Collect data (with Entra ID)
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Sense" -IncludeEntra
-
-# Step 1 (alt): Collect data without Entra ID
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Sense"
+# Step 1: Collect data
+.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Contoso"
 
 # Step 2: Generate Word doc from JSON
-node Generate-BuildDocument.js ".\AzureBuildDoc_Output\20260226_143000\Sense_Azure_ASIS_Data.json"
+node Generate-BuildDocument.js ".\AzureBuildDoc_Output\20260318_143000\Contoso_Azure_ASIS_Data.json"
 ```
 
-### Option 3: Manual
+### Resume an Interrupted Audit
 
-1. Run the audit script to collect data
-2. Open the Excel workbook and blank Word template side by side
-3. Copy data from Excel sheets into the Word template tables
+The audit saves checkpoints after each section. If interrupted:
 
-### Word Document Sections (Auto-Generated)
+```powershell
+.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Contoso" -ResumeFrom ".\AzureBuildDoc_Output\20260318_143000\_checkpoint.json"
+```
 
-The Generate-BuildDocument.js script produces a fully populated Word document with:
+### Custom Gap Analysis Thresholds
 
-| Section | Content |
-|---------|---------|
-| 1. Executive Summary | Environment-at-a-glance metrics table |
-| 2. Entra ID & Identity | Tenant details, CA policies (colour-coded), directory roles, app registrations |
-| 3. Management Groups & Subscriptions | Full MG hierarchy, subscription inventory |
-| 4. Networking | VNets, subnets (NSG gaps flagged), peerings, NSG rules per NSG, UDRs, VPN gateways, connections, Bastion, Private DNS, public IPs |
-| 5. Compute | VMs with full specs, disk config, extensions summary, AVD if deployed |
-| 6. Storage | Storage accounts with security posture |
-| 7. Backup & Recovery | Vaults, policies with retention, protected items, **UNPROTECTED VMs highlighted**, governance alignment checklist |
-| 8. Security | Defender plans per subscription (colour-coded), Secure Scores, Key Vaults |
-| 9. RBAC | Role assignment summary by role type |
-| 10. Governance & Policy | Policy assignments, **missing standard policies flagged**, compliance summary |
-| 11. Tagging Standard | Coverage per subscription, tag keys in use, **missing standard tags** |
-| 12. Monitoring & Logging | Log Analytics, alert rules, action groups, **LogicMonitor manual checklist** |
-| 13. Cost Management | Budgets (or flagged as missing), **cost management framework checklist** |
-| 14. Resource Groups | Full RG inventory |
-| 15. **Gap Analysis** | All gaps grouped by Critical/High/Medium with colour-coded status |
-| 16. **Recommendations** | All improvement recommendations |
-| 17. **Operational Compliance Framework** | 10-point checklist with status, actions, and owners |
+```powershell
+.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Contoso" -ConfigPath ".\audit-config.json"
+```
 
-All status columns are colour-coded: red (critical/not configured), amber (needs attention), green (configured/healthy).
+---
 
-## Configuration Files
+## Permissions Required
+
+| Scope | Permission | Purpose | Required? |
+|-------|-----------|---------|-----------|
+| Azure RBAC | **Reader** on target subscriptions | Read all resource configuration | Yes |
+| Azure RBAC | **Management Group Reader** | Read MG hierarchy | Yes |
+| Entra ID | **Global Reader** (or equivalent) | Read tenant config | Only with `-IncludeEntra` |
+| Graph API | User.Read.All, Policy.Read.All | CA policies, users/groups | Only with `-IncludeEntra` |
+| Graph API | Application.Read.All | App registrations | Only with `-IncludeEntra` |
+| Graph API | RoleManagement.Read.Directory | Directory roles | Only with `-IncludeEntra` |
+| Graph API | Directory.Read.All | Tenant details | Only with `-IncludeEntra` |
+
+> **Cloud Shell Note:** Azure resources are accessible via the Cloud Shell managed identity. Entra ID (Graph API) requires a separate device login — the script will prompt you with a URL and code.
+
+---
+
+## Output — Word Document Sections
+
+The generated Word document contains 19 sections:
+
+| # | Section | Content |
+|---|---------|---------|
+| 1 | Executive Summary | Environment-at-a-glance metrics |
+| 2 | Entra ID & Identity | Tenant details, CA policies, directory roles, app registrations, groups, licenses |
+| 3 | Management Groups & Subscriptions | MG hierarchy with diagram, subscription inventory |
+| 4 | Networking | VNets, subnets, peerings, NSG rules, route tables, VPN, Bastion, DNS, public IPs, firewalls, AppGW, LB, NAT GW, ExpressRoute, DDoS, private endpoints, NSG flow logs — with topology diagram |
+| 5 | Compute | VMs, disk config, extensions, AVD, managed disks, snapshots, VMSS |
+| 6 | Storage | Storage accounts with security posture |
+| 7 | Backup & Recovery | Vaults, policies, protected items, **unprotected VMs**, ASR |
+| 8 | Security | Defender plans, Secure Scores, Key Vaults, Defender recommendations |
+| 9 | RBAC | Role assignment summary by type |
+| 10 | Governance & Policy | Policy assignments, **missing standard policies**, compliance, locks, custom roles, exemptions |
+| 11 | Tagging | Coverage per subscription, tag keys, **missing standard tags** |
+| 12 | Monitoring & Logging | Log Analytics, alerts, action groups, App Insights, diagnostics, query rules |
+| 13 | Cost Management | Budgets or flagged as missing |
+| 14 | Resource Groups | Full inventory |
+| 15 | Application Services | App Service Plans, Web Apps, Function Apps |
+| 16 | Databases | Azure SQL, Cosmos DB |
+| 17 | Containers | AKS, Container Registries |
+| 18 | Automation & Advisor | Automation Accounts, Runbooks, Advisor recommendations |
+| 19 | Resource Summary | Resource Graph type counts |
+
+Plus: **Gap Analysis**, **Recommendations**, and **Operational Compliance Framework** sections.
+
+All status columns are colour-coded: red (critical), amber (warning), green (healthy).
+
+---
+
+## Output — Excel Workbook
+
+40+ sheets including all resource types, plus:
+
+- **GAP ANALYSIS** — All identified gaps with severity (colour-coded)
+- **RECOMMENDATIONS** — 30+ improvement recommendations
+- **OPERATIONAL COMPLIANCE** — 10-point compliance framework checklist
+
+---
+
+## Output — Diagrams
+
+### Network Topology
+- Hub-spoke layout (auto-detected from peering data)
+- Each VNet shows: address space, DNS servers, all subnets with CIDR
+- Subnet details: NSG name (red warning if missing), service endpoints, delegations
+- Appliance badges: Bastion, Firewall, VPN GW, AppGW, Load Balancer
+- Peering lines, VPN connections, ExpressRoute circuits
+- Connection dots at endpoints
+
+### Management Group Hierarchy
+- Tree layout from tenant root
+- Shows subscriptions under each MG
+- Collapses when >4 subscriptions per MG
+
+---
+
+## Configuration
 
 ### `audit-config.json` — Gap Analysis Thresholds
-
-Customise the gap analysis thresholds and standard policies. The audit script loads this via `-ConfigPath`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `maxGlobalAdmins` | 5 | Flag when Global Admin count exceeds this |
-| `minGlobalAdmins` | 2 | Flag when Global Admin count is below this |
-| `cafKeywordThreshold` | 3 | Minimum CAF keywords required in MG names |
-| `lowTaggingThreshold` | 50 | Flag subscriptions with tagging below this % |
+| `minGlobalAdmins` | 2 | Flag when count is below this |
+| `cafKeywordThreshold` | 3 | Min CAF keywords in MG names |
+| `lowTaggingThreshold` | 50 | Flag subscriptions below this % tagged |
 | `directUserAssignmentThreshold` | 5 | Flag when direct user RBAC assignments exceed this |
-| `standardPolicies` | Array | List of Azure Policies expected to be applied |
-| `expectedTags` | Array | List of standard tag keys expected on resources |
+| `standardPolicies` | Array | Azure Policies expected to be applied |
+| `expectedTags` | Array | Tag keys expected on resources |
 
 ### `branding-config.json` — White-Labelling
 
-Customise the Word document branding (colours, fonts, company details):
+| Section | Description |
+|---------|-------------|
+| `colors` | Hex colours for headings, tables, status indicators |
+| `page` | Page dimensions (DXA units) |
+| `fonts` | Heading and body font families |
+| `company` | Company name, website, document classification |
 
-| Section | Keys | Description |
-|---------|------|-------------|
-| `colors` | primary, accent, dark, light, etc. | Hex colours (without #) |
-| `page` | width, height, margin | Page dimensions in DXA units |
-| `fonts` | heading, body | Font family names |
-| `company` | name, website, classification | Company details for headers/footers |
+---
 
-## Running in Azure Cloud Shell
+## What Still Needs Manual Review
 
-The toolkit works in Azure Cloud Shell with one consideration: the `sharp` module (used for PNG diagram conversion) may not be available. When `sharp` is missing, diagrams are output as SVG instead of PNG.
+| Item | Why | Where to Check |
+|------|-----|---------------|
+| LogicMonitor integration | Third-party, no Azure API | LogicMonitor portal |
+| SMTP relay config | Application-level | Server config / Exchange |
+| On-prem firewall rules | Not Azure API accessible | FortiGate / on-prem mgmt |
+| Incident management process | Organisational process | SOPs / agreements |
+| Backup roles & responsibilities | Organisational | RACI matrix / contracts |
+| Compliance requirements | Customer-specific | Governance docs |
+| DR testing schedule | Process-based | Operational runbooks |
+| ExpressRoute provider details | Contract-based | Provider portal |
 
-```bash
-# In Cloud Shell, install only docx (sharp will be skipped automatically)
-npm install
-
-# Run the audit
-pwsh ./Invoke-AzureTenancyAudit.ps1 -CustomerName "Customer" -IncludeEntra
-
-# Generate diagrams (outputs SVG when sharp unavailable)
-node Generate-StandaloneDiagrams.js ./AzureBuildDoc_Output/latest/Customer_Azure_ASIS_Data.json
-```
-
-## Checkpoint / Resume
-
-If the audit script is interrupted (network error, timeout, etc.), it automatically saves checkpoint files. To resume:
-
-```powershell
-# Find the checkpoint file in your output directory
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Customer" -ResumeFrom ".\AzureBuildDoc_Output\20260226_143000\_checkpoint.json"
-```
-
-Sections already collected will be skipped, and the audit continues from where it left off. The checkpoint file is automatically deleted on successful completion.
+---
 
 ## Troubleshooting
 
+### Cloud Shell: "Output path is not writable"
 ```powershell
-# If modules aren't found
+git pull   # get latest fix
+```
+
+### Modules not found
+```powershell
 Get-InstalledModule Az*
 Get-InstalledModule Microsoft.Graph*
+Get-InstalledModule ImportExcel
+```
 
-# If permissions are insufficient
-Get-AzRoleAssignment -SignInName (Get-AzContext).Account.Id
+### Entra ID: Device login prompt
+This is expected in Cloud Shell — Graph API requires separate authentication. Either:
+- Complete the device login (open URL, enter code)
+- Or skip Entra: remove `-IncludeEntra` flag
 
-# If Graph connection fails
-Connect-MgGraph -Scopes "User.Read.All" -TenantId "your-tenant-id"
+### Graph connection fails
+```powershell
+Connect-MgGraph -Scopes "User.Read.All","Policy.Read.All" -TenantId "your-tenant-id"
+```
+
+### Diagrams: sharp not available
+Normal in Cloud Shell. Diagrams output as SVG instead of PNG. Use `-Format svg` explicitly or the fallback is automatic.
+
+### Update to latest version
+```powershell
+cd ~/AS-IS-Azure-Documentation-Creator
+git pull
+.\Setup-CloudShell.ps1 -SkipClone
 ```

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Complete pipeline: Audit Azure tenancy → Generate Word document.
+    Complete pipeline: Collect Azure configuration → Generate Word document.
     
 .DESCRIPTION
     Runs Invoke-AzureTenancyAudit.ps1 to collect data, then calls
@@ -63,7 +63,7 @@ catch {
 # PRE-FLIGHT: Check dependencies
 # ============================================================
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Azure AS-IS Build Document Pipeline" -ForegroundColor Cyan
+Write-Host "  Azure As-Built Configuration Document Pipeline" -ForegroundColor Cyan
 Write-Host "  Customer: $CustomerName" -ForegroundColor Cyan
 Write-Host "  Entra ID: $(if ($IncludeEntra) { 'INCLUDED' } else { 'EXCLUDED (use -IncludeEntra to add)' })" -ForegroundColor $(if ($IncludeEntra) { "Green" } else { "Yellow" })
 Write-Host "============================================================" -ForegroundColor Cyan
@@ -78,7 +78,7 @@ if (-not $nodeVersion) {
 }
 Write-Host "[OK] Node.js: $nodeVersion" -ForegroundColor Green
 
-# Check docx npm module (must be installed locally in script directory)
+# Check Node modules (must be installed locally in script directory)
 $docxCheck = & node -e "try { require('docx'); console.log('OK'); } catch(e) { console.log('MISSING'); }" 2>$null
 if ($docxCheck -ne "OK") {
     Write-Host "[INFO] Installing docx npm module locally..." -ForegroundColor Yellow
@@ -87,6 +87,20 @@ if ($docxCheck -ne "OK") {
     Pop-Location
 }
 Write-Host "[OK] docx module available" -ForegroundColor Green
+
+$sharpCheck = & node -e "try { require('sharp'); console.log('OK'); } catch(e) { console.log('MISSING'); }" 2>$null
+if ($sharpCheck -ne "OK") {
+    Write-Host "[INFO] Installing sharp npm module locally (required for Word-embedded PNG diagrams)..." -ForegroundColor Yellow
+    Push-Location $scriptDir
+    & npm install sharp --save-optional 2>$null
+    Pop-Location
+    $sharpCheck = & node -e "try { require('sharp'); console.log('OK'); } catch(e) { console.log('MISSING'); }" 2>$null
+}
+if ($sharpCheck -eq "OK") {
+    Write-Host "[OK] sharp module available" -ForegroundColor Green
+} else {
+    Write-Host "[WARN] sharp module not available. Standalone diagrams may be SVG only and will not be embedded in Word." -ForegroundColor Yellow
+}
 
 # Check Az module
 $azModule = Get-Module -ListAvailable Az.Accounts
@@ -127,9 +141,9 @@ if ($IncludeEntra) {
 Write-Host ""
 
 # ============================================================
-# STEP 1: Run the audit script
+# STEP 1: Run the configuration collection script
 # ============================================================
-Write-Host "STEP 1: Running Azure tenancy audit..." -ForegroundColor Cyan
+Write-Host "STEP 1: Collecting Azure tenancy configuration..." -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 $auditScript = Join-Path $scriptDir "Invoke-AzureTenancyAudit.ps1"
@@ -150,7 +164,7 @@ if ($SubscriptionFilter) { $auditParams["SubscriptionFilter"] = $SubscriptionFil
 # Find the JSON output
 $latestDir = Get-ChildItem -Path $OutputPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
 if (-not $latestDir) {
-    Write-Host "[ERROR] No output directory found. Audit may have failed." -ForegroundColor Red
+    Write-Host "[ERROR] No output directory found. Configuration collection may have failed." -ForegroundColor Red
     exit 1
 }
 
@@ -161,7 +175,7 @@ if (-not $jsonFile) {
 }
 
 Write-Host ""
-Write-Host "[OK] Audit data: $($jsonFile.FullName)" -ForegroundColor Green
+Write-Host "[OK] Configuration data: $($jsonFile.FullName)" -ForegroundColor Green
 
 # ============================================================
 # STEP 2: Generate Word document
@@ -176,7 +190,7 @@ if (-not (Test-Path $generatorScript)) {
     exit 1
 }
 
-$docxOutput = Join-Path $latestDir.FullName "${CustomerName}_Azure_ASIS_Build_Document.docx"
+$docxOutput = Join-Path $latestDir.FullName "${CustomerName}_Azure_AsBuilt_Configuration_Document.docx"
 
 & node $generatorScript $jsonFile.FullName $docxOutput
 
@@ -209,7 +223,7 @@ Write-Host ""
 Write-Host "STEP 4: Packaging output as ZIP..." -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
-$zipName = "${CustomerName}_Azure_ASIS_$(Get-Date -Format 'yyyyMMdd').zip"
+$zipName = "${CustomerName}_Azure_AsBuilt_$(Get-Date -Format 'yyyyMMdd').zip"
 $zipPath = Join-Path $OutputPath $zipName
 
 try {
@@ -226,7 +240,7 @@ try {
 # ============================================================
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  BUILD DOCUMENT PIPELINE COMPLETE" -ForegroundColor Cyan
+Write-Host "  AS-BUILT DOCUMENT PIPELINE COMPLETE" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "OUTPUT FILES:" -ForegroundColor Green
@@ -240,9 +254,9 @@ Write-Host ""
 Write-Host "NEXT STEPS:" -ForegroundColor Yellow
 Write-Host "  1. Download the ZIP: $zipName"
 Write-Host "  2. Open the Word document and right-click the Table of Contents > Update Field"
-Write-Host "  3. Review the Gap Analysis section for critical items"
-Write-Host "  4. Review the Operational Compliance Framework"
-Write-Host "  5. Manually add: LogicMonitor details, SMTP config, on-prem firewall rules"
+Write-Host "  3. Review the as-built configuration tables for handover completeness"
+Write-Host "  4. Review the supporting Excel workbook for detailed collected data"
+Write-Host "  5. Manually add any non-Azure project details, such as monitoring integrations, SMTP config, or on-prem firewall rules"
 Write-Host ""
 if ($env:ACC_CLOUD) {
     # Running in Azure Cloud Shell - show download hint

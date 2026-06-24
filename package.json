@@ -1,7 +1,7 @@
 {
-  "name": "as-is",
+  "name": "azure-as-built-documentation",
   "version": "1.0.0",
-  "description": "This toolkit automates the collection of Azure tenancy configuration data to populate the AS-IS Build Document template. It interrogates all aspects of an Azure environment via PowerShell Az modules and Microsoft Graph API.",
+  "description": "Toolkit for collecting Azure tenancy configuration data and generating as-built project handover documentation with diagrams.",
   "main": "Generate-BuildDocument.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

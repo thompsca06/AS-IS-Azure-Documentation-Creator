@@ -271,9 +271,9 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
     mapRes(appGWs, "AppGW"); mapRes(lbs, "LB");
 
     // Step 2 & 3 --- Layout constants and VNet box computation ----------------
-    const HEADER_HEIGHT = 28, ADDRESS_ROW_HEIGHT = 16, SUBNET_LINE_HEIGHT = 14, SUBNET_DETAIL_HEIGHT = 10;
+    const HEADER_HEIGHT = 26, ADDRESS_ROW_HEIGHT = 15, SUBNET_LINE_HEIGHT = 13, SUBNET_DETAIL_HEIGHT = 9;
     const APPLIANCE_HEIGHT = 16, BOX_PADDING = 10;
-    const MAX_VISIBLE_SUBNETS = 12, TITLE_HEIGHT = 30, LEGEND_HEIGHT = 55, TOP_PADDING = 20;
+    const MAX_VISIBLE_SUBNETS = 6, TITLE_HEIGHT = 30, LEGEND_HEIGHT = 55, TOP_PADDING = 20;
 
     function makeBox(vnet, isHub, isExt) {
       const name = typeof vnet === "string" ? vnet : vn(vnet);
@@ -285,10 +285,8 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
       const dns = dnsRaw && dnsRaw !== "Azure Default" ? dnsRaw : "";
       const subs = vnetSubs[name] || [];
       const appls = vnetAppl[name] ? Array.from(vnetAppl[name]) : [];
-      // Wider boxes for detailed subnet info
-      const w = isHub ? 380 : isExt ? 220 : 320;
+      const w = isHub ? 340 : isExt ? 210 : 285;
       const shown = subs.slice(0, MAX_VISIBLE_SUBNETS), extra = subs.length - shown.length;
-      // Each subnet now gets a main line + detail line (NSG/IP)
       let h = BOX_PADDING + HEADER_HEIGHT + (addr ? ADDRESS_ROW_HEIGHT : 0) + (dns ? SUBNET_DETAIL_HEIGHT : 0);
       h += shown.length * (SUBNET_LINE_HEIGHT + SUBNET_DETAIL_HEIGHT);
       if (extra > 0) h += SUBNET_LINE_HEIGHT;
@@ -310,7 +308,8 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
     }
 
     // Position boxes (hub-spoke or grid)
-    const hubTopY = TOP_PADDING + TITLE_HEIGHT + 20;
+    const topExternalBand = localGWs.length > 0 || exRoutes.length > 0 ? 58 : 0;
+    const hubTopY = TOP_PADDING + TITLE_HEIGHT + 20 + topExternalBand;
     let canvasH;
 
     if (hubName && vboxes[hubName]) {
@@ -320,31 +319,40 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
 
       const intSpokes = spokes.filter((n) => !extVNets.has(n));
       const extList = spokes.filter((n) => extVNets.has(n));
-      // Gap between hub bottom and spoke tops for clean routing
-      const spokeTopY = hb.y + hb.h + 60;
-
-      // Calculate total width needed for spokes with proper gaps
-      const SPOKE_GAP = 20;
-      const totalSpokeW = intSpokes.reduce((s, n) => s + (vboxes[n] ? vboxes[n].w : 0), 0) + SPOKE_GAP * Math.max(0, intSpokes.length - 1);
-      const spokeStartX = Math.max(TOP_PADDING, (maxWidth - totalSpokeW) / 2);
-
-      // Position spokes side by side with gaps (not overlapping)
-      let sx = spokeStartX;
-      for (let i = 0; i < intSpokes.length; i++) {
-        const b = vboxes[intSpokes[i]];
-        b.x = sx; b.y = spokeTopY;
-        b.cx = sx + b.w / 2; b.cy = spokeTopY + b.h / 2;
-        sx += b.w + SPOKE_GAP;
+      const SPOKE_GAP = 24, ROW_GAP = 64;
+      const usableW = Math.max(520, maxWidth - TOP_PADDING * 2);
+      const rows = [];
+      let row = [], rowW = 0, rowH = 0;
+      for (const nm of intSpokes) {
+        const b = vboxes[nm]; if (!b) continue;
+        const nextW = row.length === 0 ? b.w : rowW + SPOKE_GAP + b.w;
+        if (row.length > 0 && nextW > usableW) {
+          rows.push({ items: row, width: rowW, height: rowH });
+          row = []; rowW = 0; rowH = 0;
+        }
+        row.push(nm);
+        rowW = rowW === 0 ? b.w : rowW + SPOKE_GAP + b.w;
+        rowH = Math.max(rowH, b.h);
       }
+      if (row.length > 0) rows.push({ items: row, width: rowW, height: rowH });
 
-      // If spokes overflow the canvas, widen it
-      if (sx > maxWidth) maxWidth = sx + TOP_PADDING;
+      let ry = hb.y + hb.h + 72;
+      for (const r of rows) {
+        let sx = Math.max(TOP_PADDING, (maxWidth - r.width) / 2);
+        for (const nm of r.items) {
+          const b = vboxes[nm];
+          b.x = sx; b.y = ry;
+          b.cx = sx + b.w / 2; b.cy = ry + b.h / 2;
+          sx += b.w + SPOKE_GAP;
+        }
+        ry += r.height + ROW_GAP;
+      }
       // External VNets further below - calculate based on tallest spoke
       if (extList.length > 0) {
         const maxSpokeBottom = intSpokes.reduce((m, n) => {
           const bx = vboxes[n]; return bx ? Math.max(m, bx.y + bx.h) : m;
-        }, spokeTopY);
-        const ey = maxSpokeBottom + 60;
+        }, hb.y + hb.h + 72);
+        const ey = maxSpokeBottom + 70;
         const extTotalW = extList.reduce((s, n) => s + (vboxes[n] ? vboxes[n].w : 0), 0) + SPOKE_GAP * Math.max(0, extList.length - 1);
         let ex = Math.max(TOP_PADDING, (maxWidth - extTotalW) / 2);
         for (let i = 0; i < extList.length; i++) {
@@ -386,7 +394,7 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
     const sL = [], sB = []; // svg lines, svg boxes
 
     // Peering connection lines with connection dots
-    const DOT_R = 4; // radius of connection dot
+    const DOT_R = 3; // radius of connection dot
     for (const p of uniqPeers) {
       const a = vboxes[p.source], b = vboxes[p.remote];
       if (!a || !b) continue;
@@ -403,17 +411,16 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
         const right = a.cx < b.cx ? b : a;
         const lx1 = left.x + left.w, ly1 = left.cy;
         const lx2 = right.x, ly2 = right.cy;
-        sL.push(`<line x1="${lx1}" y1="${ly1}" x2="${lx2}" y2="${ly2}" stroke="${clr}" stroke-width="1.5"${dash}/>`);
+        sL.push(`<line x1="${lx1}" y1="${ly1}" x2="${lx2}" y2="${ly2}" stroke="${clr}" stroke-width="1.2" opacity="0.55"${dash}/>`);
         sL.push(`<circle cx="${lx1}" cy="${ly1}" r="${DOT_R}" fill="${clr}"/>`);
         sL.push(`<circle cx="${lx2}" cy="${ly2}" r="${DOT_R}" fill="${clr}"/>`);
       } else {
-        // Different rows: bezier from bottom of upper to top of lower
+        // Different rows: routed path from bottom of upper to top of lower
         const x1 = upper.cx, y1 = upper.y + upper.h;
         const x2 = lower.cx, y2 = lower.y;
-        const cp1y = y1 + (y2 - y1) * 0.5;
-        const cp2y = y2 - (y2 - y1) * 0.5;
-        sL.push(`<path d="M ${x1} ${y1} C ${x1} ${cp1y}, ${x2} ${cp2y}, ${x2} ${y2}" ` +
-          `fill="none" stroke="${clr}" stroke-width="1.5"${dash}/>`);
+        const midY = Math.round(y1 + (y2 - y1) * 0.45);
+        sL.push(`<path d="M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}" ` +
+          `fill="none" stroke="${clr}" stroke-width="1.2" opacity="0.55"${dash}/>`);
         // Connection dots at both ends
         sL.push(`<circle cx="${x1}" cy="${y1}" r="${DOT_R}" fill="${clr}"/>`);
         sL.push(`<circle cx="${x2}" cy="${y2}" r="${DOT_R}" fill="${clr}"/>`);
@@ -422,7 +429,7 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
 
     // Local Network Gateways (on-prem boxes) and VPN lines
     if (localGWs.length > 0) {
-      const lgy = TOP_PADDING + TITLE_HEIGHT - 10;
+      const lgy = TOP_PADDING + TITLE_HEIGHT + 8;
       const step = localGWs.length > 1 ? (canvasW - TOP_PADDING * 2 - 120) / (localGWs.length - 1) : 0;
       for (let i = 0; i < localGWs.length; i++) {
         const gw = localGWs[i], gwNm = gw.GatewayName || gw.Name || gw.name || "On-Prem";
@@ -437,8 +444,9 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
         const tgt = hubName || (vnets[0] && vn(vnets[0]));
         if (tgt && vboxes[tgt]) {
           const tb = vboxes[tgt];
-          sL.push(`<path d="M ${lx + 60} ${lgy + 32} C ${lx + 60} ${tb.y - 10}, ${tb.cx} ${lgy + 50}, ${tb.cx} ${tb.y}" ` +
-            `fill="none" stroke="#FFB74D" stroke-width="1.5" stroke-dasharray="6,3"/>`);
+          const midY = Math.round(lgy + 48 + (tb.y - lgy - 48) / 2);
+          sL.push(`<path d="M ${lx + 60} ${lgy + 32} L ${lx + 60} ${midY} L ${tb.cx} ${midY} L ${tb.cx} ${tb.y}" ` +
+            `fill="none" stroke="#FFB74D" stroke-width="1.2" opacity="0.65" stroke-dasharray="6,3"/>`);
           sL.push(`<circle cx="${lx + 60}" cy="${lgy + 32}" r="${DOT_R}" fill="#FFB74D"/>`);
           sL.push(`<circle cx="${tb.cx}" cy="${tb.y}" r="${DOT_R}" fill="#FFB74D"/>`);
         }
@@ -450,8 +458,8 @@ async function generateNetworkDiagram(networking, colors, maxWidth) {
       const vnName = er.VNetName || er.vnetName || "";
       if (vnName && vboxes[vnName]) {
         const bx = vboxes[vnName];
-        sL.push(`<line x1="${bx.cx}" y1="${bx.y}" x2="${bx.cx}" y2="${TOP_PADDING}" ` +
-          `stroke="#BA68C8" stroke-width="3"/>`);
+        sL.push(`<line x1="${bx.cx}" y1="${bx.y}" x2="${bx.cx}" y2="${TOP_PADDING + TITLE_HEIGHT + 8}" ` +
+          `stroke="#BA68C8" stroke-width="2.5" opacity="0.65"/>`);
         sL.push(`<circle cx="${bx.cx}" cy="${bx.y}" r="5" fill="#BA68C8"/>`);
       }
     }

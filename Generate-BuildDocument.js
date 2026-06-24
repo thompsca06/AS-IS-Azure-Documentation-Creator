@@ -3,14 +3,14 @@
  * Generate-BuildDocument.js
  * 
  * Reads the JSON output from Invoke-AzureTenancyAudit.ps1
- * and generates a fully populated AS-IS Build Document (.docx)
+ * and generates a fully populated Azure as-built configuration document (.docx)
  * 
  * Usage:
  *   node Generate-BuildDocument.js <path-to-json> [output-path]
  *   
  * Example:
- *   node Generate-BuildDocument.js .\AzureBuildDoc_Output\20260226\Sense_Azure_ASIS_Data.json
- *   node Generate-BuildDocument.js data.json "C:\Reports\Sense_ASIS_Build.docx"
+ *   node Generate-BuildDocument.js .\AzureBuildDoc_Output\20260226\Customer_Azure_ASIS_Data.json
+ *   node Generate-BuildDocument.js data.json "C:\Reports\Customer_Azure_AsBuilt_Configuration_Document.docx"
  * 
  * Prerequisites:
  *   npm install -g docx
@@ -49,9 +49,10 @@ const data = JSON.parse(raw);
 const S = data.Sections || {};
 
 const customerName = data.CustomerName || "[Customer Name]";
+const DOCUMENT_TITLE = "Azure As-Built Configuration Document";
 const outputDocx = process.argv[3] || path.join(
   path.dirname(jsonPath),
-  `${customerName}_Azure_ASIS_Build_Document.docx`
+  `${customerName}_Azure_AsBuilt_Configuration_Document.docx`
 );
 
 const entraIncluded = data.EntraIncluded || false;
@@ -75,7 +76,7 @@ const BRAND_DEFAULTS = {
   },
   page: { width: 11906, height: 16838, margin: 1134 },
   fonts: { heading: "Segoe UI Semibold", body: "Segoe UI" },
-  company: { name: "Tieva Ltd", website: "tieva.co.uk", classification: "Confidential" },
+  company: { name: "Company Name", website: "company.example", classification: "Confidential" },
 };
 
 let brandCfg = BRAND_DEFAULTS;
@@ -191,6 +192,19 @@ function pb() { return new Paragraph({ children: [new PageBreak()] }); }
 
 function countOrNA(arr) { return Array.isArray(arr) ? arr.length : 0; }
 
+function canEmbedDiagram(result, label) {
+  if (!result) return false;
+  if (!result.isSvg) return true;
+  console.warn(`Warning: ${label} diagram was generated as SVG only. Install sharp to embed diagrams in the Word document.`);
+  return false;
+}
+
+function diagramTransform(result) {
+  const width = Math.min(DIAGRAM_WIDTH_PX, result.widthPx || DIAGRAM_WIDTH_PX);
+  const height = Math.round((result.heightPx || width) * (width / (result.widthPx || width)));
+  return { width, height };
+}
+
 // ============================================================
 // BUILD CHILDREN ARRAY
 // ============================================================
@@ -238,19 +252,19 @@ children.push(
     children: [new TextRun({ text: "Azure Tenancy", font: "Segoe UI", size: 44, color: B.dark })] }),
   // Subtitle line 2
   new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 100 },
-    children: [new TextRun({ text: "AS-IS Build Document", font: "Segoe UI", size: 36, color: B.dark })] }),
+    children: [new TextRun({ text: DOCUMENT_TITLE, font: "Segoe UI", size: 36, color: B.dark })] }),
   // Light turquoise separator
   new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 600 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: B.accent, space: 1 } }, children: [] }),
   // Metadata
   new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 80 },
-    children: [new TextRun({ text: `Prepared by: Tieva Ltd`, font: "Segoe UI", size: 22, color: B.grey })] }),
+    children: [new TextRun({ text: `Prepared by: ${BRAND_COMPANY.name || data.CollectedBy || "Company Name"}`, font: "Segoe UI", size: 22, color: B.grey })] }),
   new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 80 },
     children: [new TextRun({ text: `Date: ${data.CollectionDate || new Date().toLocaleDateString("en-GB")}`, font: "Segoe UI", size: 22, color: B.grey })] }),
   new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 80 },
     children: [new TextRun({ text: `Tenant ID: ${data.TenantId || "N/A"}`, font: "Segoe UI", size: 20, color: B.grey })] }),
   new Paragraph({ alignment: AlignmentType.LEFT, spacing: { after: 80 },
-    children: [new TextRun({ text: "Classification: Confidential", font: "Segoe UI", size: 20, color: B.grey })] }),
+    children: [new TextRun({ text: `Classification: ${BRAND_COMPANY.classification || "Confidential"}`, font: "Segoe UI", size: 20, color: B.grey })] }),
   // Teal bottom border bar
   new Paragraph({ spacing: { before: 1200, after: 0 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 24, color: B.primary, space: 1 } }, children: [] }),
@@ -265,20 +279,20 @@ children.push(
   makeTable(
     ["Field", "Details"],
     [
-      ["Document Title", `${customerName} - Azure AS-IS Build Document`],
+      ["Document Title", `${customerName} - ${DOCUMENT_TITLE}`],
       ["Creation Date", data.CollectionDate || "[DD/MM/YYYY]"],
       ["Owner / Author", data.CollectedBy || "[Name]"],
       ["Customer Name", customerName],
       ["Tenant ID", data.TenantId || "[GUID]"],
       ["Entra ID Scope", entraIncluded ? `Included (${entraStatus})` : "Not in scope"],
       ["Internal / External Audience", "Internal / External"],
-      ["Document Classification", "Confidential"],
-      ["Data Source", "Automated collection via Invoke-AzureTenancyAudit.ps1"],
+      ["Document Classification", BRAND_COMPANY.classification || "Confidential"],
+      ["Data Source", "Automated Azure configuration collection via Invoke-AzureTenancyAudit.ps1"],
     ],
     [3200, CW - 3200]
   ),
   gap(),
-  h2("TIEVA Approval History"),
+  h2("Approval History"),
   makeTable(
     ["Version", "Approver", "Position", "Date"],
     [
@@ -293,7 +307,7 @@ children.push(
   makeTable(
     ["Version", "Revision", "Revised By", "Date"],
     [
-      ["1.0", "Initial automated collection", data.CollectedBy || "[Name]", data.CollectionDate || "[Date]"],
+      ["1.0", "Initial as-built configuration record", data.CollectedBy || "[Name]", data.CollectionDate || "[Date]"],
       ["", "", "", ""],
     ],
     [1200, 3500, 2700, 2238]
@@ -309,13 +323,13 @@ children.push(
 );
 
 // ============================================================
-// 1. EXECUTIVE SUMMARY
+// 1. PROJECT HANDOVER SUMMARY
 // ============================================================
 children.push(
-  h1("1. Executive Summary"),
-  p(`This document provides an AS-IS record of the Azure tenancy configuration for ${customerName}. All data was collected programmatically on ${data.CollectionDate || "N/A"} using the Invoke-AzureTenancyAudit.ps1 script running as ${data.CollectedBy || "N/A"}.`),
+  h1("1. Project Handover Summary"),
+  p(`This document records the Azure configuration present for ${customerName} at project handover. It is intended as an as-built configuration reference for support, operations, and future change activity. Configuration data was collected programmatically on ${data.CollectionDate || "N/A"} using Invoke-AzureTenancyAudit.ps1 running as ${data.CollectedBy || "N/A"}.`),
   gap(),
-  pBold("Environment at a Glance:"),
+  pBold("Delivered Environment at a Glance:"),
   makeTable(
     ["Metric", "Value"],
     [
@@ -344,9 +358,21 @@ children.push(
       ["AKS Clusters", String(countOrNA(S.Containers?.AKSClusters))],
       ["Container Registries", String(countOrNA(S.Containers?.ContainerRegistries))],
       ["Automation Accounts", String(countOrNA(S.Automation?.AutomationAccounts))],
-      ["Resource Types (Total)", String(countOrNA(S.ResourceSummary))],
+      ["Resource Types Captured", String(countOrNA(S.ResourceSummary))],
     ],
     [4500, CW - 4500]
+  ),
+  gap(),
+  h2("1.1 Operational Handover Notes"),
+  makeTable(
+    ["Area", "Handover Detail"],
+    [
+      ["Document Purpose", "As-built record of the Azure configuration at project handover"],
+      ["Support Use", "Use this document with the exported Excel workbook and Azure portal for operational support and future changes"],
+      ["Change Control", "Any changes made after the collection date should be recorded through the customer's change process"],
+      ["Source Data", "Generated from Azure control plane and Microsoft Graph read-only collection where in scope"],
+    ],
+    [3000, CW - 3000]
   ),
   pb()
 );
@@ -513,7 +539,7 @@ if (S.Identity) {
   if (!entraIncluded) {
     // Entra was intentionally excluded from scope
     children.push(
-      p("Entra ID was not in scope for this audit."),
+      p("Entra ID was not in scope for this configuration collection."),
       gap()
     );
   } else {
@@ -550,7 +576,7 @@ if (mgs && mgs.length > 0) {
   );
 
   // Insert MG hierarchy diagram on its own landscape page
-  if (mgDiagramResult) {
+  if (canEmbedDiagram(mgDiagramResult, "Management Group Hierarchy")) {
     mgDiagramSplitIdx = children.length; // mark split point
     mgDiagramContent = [
       h2("3.1a. Management Group Hierarchy Diagram"),
@@ -561,7 +587,7 @@ if (mgs && mgs.length > 0) {
           new ImageRun({
             type: "png",
             data: mgDiagramResult.pngBuffer,
-            transformation: { width: DIAGRAM_WIDTH_PX, height: mgDiagramResult.heightPx },
+            transformation: diagramTransform(mgDiagramResult),
             altText: { title: "Management Group Hierarchy", description: "Auto-generated diagram showing the Azure management group hierarchy and subscription placement.", name: "MG Hierarchy Diagram" },
           }),
         ],
@@ -599,7 +625,7 @@ children.push(pb());
 // 4. NETWORKING
 // ============================================================
 // Insert network heading + topology diagram on landscape page (or portrait if no diagram)
-if (networkDiagramResult) {
+if (canEmbedDiagram(networkDiagramResult, "Network Topology")) {
   netDiagramSplitIdx = children.length; // mark split point (before heading)
   netDiagramContent = [
     h1("4. Networking"),
@@ -611,7 +637,7 @@ if (networkDiagramResult) {
         new ImageRun({
           type: "png",
           data: networkDiagramResult.pngBuffer,
-          transformation: { width: DIAGRAM_WIDTH_PX, height: networkDiagramResult.heightPx },
+          transformation: diagramTransform(networkDiagramResult),
           altText: { title: "Network Topology", description: "Auto-generated diagram showing Azure virtual networks, peering connections, and network appliances.", name: "Network Topology Diagram" },
         }),
       ],
@@ -1203,8 +1229,8 @@ if (bk.BackupItems && bk.BackupItems.length > 0) {
 // Unprotected VMs
 if (bk.UnprotectedVMs && bk.UnprotectedVMs.length > 0) {
   children.push(
-    h2("7.4. UNPROTECTED VIRTUAL MACHINES"),
-    pBold(`${bk.UnprotectedVMs.length} running VMs have NO backup configured:`),
+    h2("7.4. Virtual Machines Without Backup Protection"),
+    p(`${bk.UnprotectedVMs.length} running VM(s) were captured without backup protection configured at collection time.`),
   );
   const upRows = bk.UnprotectedVMs.map(u => [u.VMName, u.Subscription, u.VMSize || "N/A"]);
   children.push(
@@ -1305,11 +1331,11 @@ if (sec.KeyVaults && sec.KeyVaults.length > 0) {
   );
 }
 
-// Defender Recommendations
+// Defender for Cloud assessments
 if (sec.DefenderRecommendations && sec.DefenderRecommendations.length > 0) {
   children.push(
-    h2("8.4. Defender Recommendations"),
-    p(`${sec.DefenderRecommendations.length} non-healthy security assessments identified.`)
+    h2("8.4. Defender for Cloud Assessment Items"),
+    p(`${sec.DefenderRecommendations.length} Defender for Cloud assessment item(s) retrieved.`)
   );
   const drRows = sec.DefenderRecommendations.slice(0, 30).map(r => [
     r.AssessmentName, r.Severity || "N/A", r.Status || "N/A", r.ResourceType || "N/A"
@@ -1323,7 +1349,7 @@ if (sec.DefenderRecommendations && sec.DefenderRecommendations.length > 0) {
     ),
     gap()
   );
-  if (sec.DefenderRecommendations.length > 30) children.push(note(`Showing first 30 of ${sec.DefenderRecommendations.length} assessments. See Excel for full list.`));
+  if (sec.DefenderRecommendations.length > 30) children.push(note(`Showing first 30 of ${sec.DefenderRecommendations.length} assessment items. See Excel for full list.`));
 }
 
 children.push(pb());
@@ -1400,13 +1426,13 @@ if (pol.PolicyAssignments && pol.PolicyAssignments.length > 0) {
   );
 }
 
-// Missing standard policies
+// Expected standard policies
 if (pol.MissingStdPolicies && pol.MissingStdPolicies.length > 0) {
   children.push(
-    h2("10.2. Standard Policies Not Present"),
-    p("The following standard policies were not found applied to any scope:"),
+    h2("10.2. Expected Standard Policy Check"),
+    p("The following expected standard policies were not found applied to any collected scope:"),
   );
-  const mpRows = pol.MissingStdPolicies.map(mp => [mp, "Not Applied"]);
+  const mpRows = pol.MissingStdPolicies.map(mp => [mp, "Not found in collected scopes"]);
   children.push(
     makeStatusTable(
       ["Standard Policy", "Status"],
@@ -1533,10 +1559,10 @@ if (tags.TagKeyUsage && tags.TagKeyUsage.length > 0) {
 
 if (tags.MissingStdTags && tags.MissingStdTags.length > 0) {
   children.push(
-    h2("11.3. Standard Tags Not Present"),
-    p("The following standard tags were not found on any resources:"),
+    h2("11.3. Expected Standard Tag Check"),
+    p("The following expected standard tags were not found on collected resources:"),
   );
-  const mtRows = tags.MissingStdTags.map(mt => [mt, "Not Found"]);
+  const mtRows = tags.MissingStdTags.map(mt => [mt, "Not found in collected resources"]);
   children.push(
     makeStatusTable(["Expected Tag", "Status"], mtRows, [5000, 4638], 1),
     gap()
@@ -1939,9 +1965,9 @@ if ((!cont.AKSClusters || cont.AKSClusters.length === 0) &&
 children.push(pb());
 
 // ============================================================
-// 18. AUTOMATION & ADVISOR
+// 18. AUTOMATION & OPERATIONAL REFERENCES
 // ============================================================
-children.push(h1("18. Automation & Advisor"));
+children.push(h1("18. Automation & Operational References"));
 
 const auto = S.Automation || {};
 
@@ -1987,8 +2013,8 @@ if (auto.Runbooks && auto.Runbooks.length > 0) {
 const advisor = S.Advisor;
 if (advisor && advisor.length > 0) {
   children.push(
-    h2("18.3. Azure Advisor Recommendations"),
-    p(`${advisor.length} Advisor recommendation(s) retrieved.`)
+    h2("18.3. Azure Advisor Items"),
+    p(`${advisor.length} Azure Advisor item(s) retrieved as supporting operational reference data.`)
   );
 
   // Group by category
@@ -2016,13 +2042,13 @@ if (advisor && advisor.length > 0) {
     ),
     gap()
   );
-  if (advisor.length > 30) children.push(note(`Showing first 30 of ${advisor.length} recommendations. See Excel for full list.`));
+  if (advisor.length > 30) children.push(note(`Showing first 30 of ${advisor.length} Advisor items. See Excel for full list.`));
 }
 
 if ((!auto.AutomationAccounts || auto.AutomationAccounts.length === 0) &&
     (!auto.Runbooks || auto.Runbooks.length === 0) &&
     (!advisor || advisor.length === 0)) {
-  children.push(p("No Automation Accounts or Advisor recommendations found."), gap());
+  children.push(p("No Automation Accounts or Azure Advisor items found."), gap());
 }
 
 children.push(pb());
@@ -2062,7 +2088,7 @@ function makeHeader() {
       new Paragraph({
         children: [
           new TextRun({
-            text: `${customerName} AS-IS Build Document  |  ${new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}`,
+            text: `${customerName} ${DOCUMENT_TITLE}  |  ${new Date().toLocaleString("en-GB", { month: "long", year: "numeric" })}`,
             font: "Segoe UI", size: 16, color: B.primary,
           }),
         ],
@@ -2077,8 +2103,8 @@ function makeFooter() {
     children: [
       new Paragraph({
         children: [
-          new TextRun({ text: "Confidential", font: "Segoe UI", size: 16, color: B.grey }),
-          new TextRun({ text: "\ttieva.co.uk", font: "Segoe UI", size: 16, color: B.primary }),
+          new TextRun({ text: BRAND_COMPANY.classification || "Confidential", font: "Segoe UI", size: 16, color: B.grey }),
+          new TextRun({ text: `\t${BRAND_COMPANY.website || ""}`, font: "Segoe UI", size: 16, color: B.primary }),
           new TextRun({ text: "\tPage ", font: "Segoe UI", size: 16, color: B.grey }),
           new TextRun({ children: [PageNumber.CURRENT], font: "Segoe UI", size: 16, color: B.grey }),
           new TextRun({ text: " of ", font: "Segoe UI", size: 16, color: B.grey }),

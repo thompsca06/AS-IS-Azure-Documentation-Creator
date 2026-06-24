@@ -1,12 +1,12 @@
-# AS-IS Azure Documentation Creator
+# Azure As-Built Documentation Creator
 
-Automated Azure tenancy audit toolkit that collects configuration data and generates comprehensive AS-IS Build Documents with diagrams.
+Automated Azure configuration collection toolkit that generates customer-ready as-built handover documentation with diagrams.
 
 ## What It Does
 
 Runs a single command against an Azure tenant and produces:
 
-- **Word Document** (.docx) — 19-section AS-IS Build Document with colour-coded tables, gap analysis, and recommendations
+- **Word Document** (.docx) — 19-section Azure As-Built Configuration Document with configuration tables and diagrams
 - **Excel Workbook** (.xlsx) — 40+ sheet detailed data export with conditional formatting
 - **JSON Data** (.json) — Complete structured data for programmatic use
 - **Network Topology Diagram** — Hub-spoke VNet layout with subnet details, NSG status, and appliance badges
@@ -29,7 +29,7 @@ cd AS-IS-Azure-Documentation-Creator
 
 This clones the repo, installs Node.js packages, checks PowerShell modules, and verifies your Azure connection.
 
-### 2. Run the Audit
+### 2. Collect Configuration And Build The Document
 
 ```powershell
 # Azure resources only (recommended first run)
@@ -50,8 +50,8 @@ When complete, you'll see:
 OUTPUT FILES:
   JSON:   ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_ASIS_Data.json
   Excel:  ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_ASIS_BuildDoc.xlsx
-  Word:   ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_ASIS_Build_Document.docx
-  ZIP:    ./AzureBuildDoc_Output/Contoso_Azure_ASIS_20260318.zip
+  Word:   ./AzureBuildDoc_Output/20260318_143000/Contoso_Azure_AsBuilt_Configuration_Document.docx
+  ZIP:    ./AzureBuildDoc_Output/Contoso_Azure_AsBuilt_20260318.zip
 ```
 
 In Cloud Shell, click the **Upload/Download** button in the toolbar, select **Download**, and enter the ZIP path.
@@ -90,16 +90,16 @@ Connect-AzAccount
 
 | File | Purpose |
 |------|---------|
-| `Build-AzureASISDocument.ps1` | **One-click pipeline** — audit + Word doc + diagrams + ZIP |
+| `Build-AzureASISDocument.ps1` | **One-click pipeline** — configuration collection + Word doc + diagrams + ZIP |
 | `Invoke-AzureTenancyAudit.ps1` | Data collection script — all Azure resources → JSON + Excel |
 | `Generate-BuildDocument.js` | Word document generator — reads JSON → 19-section .docx |
 | `Generate-Diagrams.js` | Diagram engine — MG hierarchy + network topology (SVG/PNG) |
 | `Generate-Diagrams.ps1` | **PowerShell wrapper** for standalone diagram generation |
 | `Generate-StandaloneDiagrams.js` | Node.js CLI for standalone diagram generation |
 | `Setup-CloudShell.ps1` | **Cloud Shell setup** — clone, install deps, verify environment |
-| `audit-config.json` | Configurable gap analysis thresholds |
+| `audit-config.json` | Configurable collection checks and expected standards |
 | `branding-config.json` | White-labelling (colours, fonts, company details) |
-| `Documentation Template 04-26.dotx` | Branded Word template used as the base for generated docs (see Generate-BuildDocument.js) |
+| `Documentation Template 04-26.dotx` | Branded Word template for manual use; the current generator recreates styling in code |
 | `Azure_AS-IS_Build_Document_Template.docx` | Legacy blank Word template (manual use) |
 
 ---
@@ -110,8 +110,8 @@ The `Build-AzureASISDocument.ps1` pipeline runs 4 steps:
 
 | Step | What It Does |
 |------|-------------|
-| **1. Audit** | Runs `Invoke-AzureTenancyAudit.ps1` — collects all Azure resource data across every subscription, exports JSON + Excel, runs gap analysis |
-| **2. Word Doc** | Runs `Generate-BuildDocument.js` — reads the JSON and produces a fully populated, branded Word document |
+| **1. Collection** | Runs `Invoke-AzureTenancyAudit.ps1` — collects Azure resource configuration across every selected subscription and exports JSON + Excel |
+| **2. Word Doc** | Runs `Generate-BuildDocument.js` — reads the JSON and produces a populated as-built configuration document |
 | **3. Diagrams** | Runs `Generate-StandaloneDiagrams.js` — creates MG hierarchy and network topology diagrams |
 | **4. ZIP** | Packages all output files into a single ZIP for download |
 
@@ -123,7 +123,7 @@ Dependencies (ImportExcel, docx npm module) are **auto-installed** if missing.
 
 ### Generate Diagrams Only
 
-If you've already run the audit and just want to regenerate diagrams:
+If you've already collected configuration data and just want to regenerate diagrams:
 
 ```powershell
 # Auto-detects latest JSON from output folder
@@ -142,10 +142,10 @@ If you've already run the audit and just want to regenerate diagrams:
 .\Generate-Diagrams.ps1 -JsonPath ".\output\data.json" -OutputDir ".\diagrams"
 ```
 
-### Two-Step Workflow (Audit First, Generate Later)
+### Two-Step Workflow (Collect First, Generate Later)
 
 ```powershell
-# Step 1: Collect data
+# Step 1: Collect Azure configuration data
 .\Invoke-AzureTenancyAudit.ps1 -CustomerName "Contoso"
 
 # Step 2: Generate Word doc from JSON
@@ -154,12 +154,12 @@ node Generate-BuildDocument.js ".\AzureBuildDoc_Output\20260318_143000\Contoso_A
 
 ### Checkpoints
 
-The audit writes a `_checkpoint.json` after each section as a crash artifact for
+The collection script writes a `_checkpoint.json` after each section as a crash artifact for
 inspection. It is removed automatically on successful completion. Re-running the
-audit always performs a fresh, full collection (the export and compliance checks
+collection always performs a fresh, full collection (the export and checks
 depend on a complete in-memory dataset, so partial resumes are not supported).
 
-### Custom Gap Analysis Thresholds
+### Custom Collection Checks
 
 ```powershell
 .\Invoke-AzureTenancyAudit.ps1 -CustomerName "Contoso" -ConfigPath ".\audit-config.json"
@@ -189,39 +189,37 @@ The generated Word document contains 19 sections:
 
 | # | Section | Content |
 |---|---------|---------|
-| 1 | Executive Summary | Environment-at-a-glance metrics |
+| 1 | Project Handover Summary | Delivered environment-at-a-glance metrics and operational handover notes |
 | 2 | Entra ID & Identity | Tenant details, CA policies, directory roles, app registrations, groups, licenses |
 | 3 | Management Groups & Subscriptions | MG hierarchy with diagram, subscription inventory |
 | 4 | Networking | VNets, subnets, peerings, NSG rules, route tables, VPN, Bastion, DNS, public IPs, firewalls, AppGW, LB, NAT GW, ExpressRoute, DDoS, private endpoints, NSG flow logs — with topology diagram |
 | 5 | Compute | VMs, disk config, extensions, AVD, managed disks, snapshots, VMSS |
-| 6 | Storage | Storage accounts with security posture |
-| 7 | Backup & Recovery | Vaults, policies, protected items, **unprotected VMs**, ASR |
-| 8 | Security | Defender plans, Secure Scores, Key Vaults, Defender recommendations |
+| 6 | Storage | Storage account configuration |
+| 7 | Backup & Recovery | Vaults, policies, protected items, VM backup coverage, ASR |
+| 8 | Security | Defender plans, Secure Scores, Key Vaults, Defender for Cloud assessment items |
 | 9 | RBAC | Role assignment summary by type |
-| 10 | Governance & Policy | Policy assignments, **missing standard policies**, compliance, locks, custom roles, exemptions |
-| 11 | Tagging | Coverage per subscription, tag keys, **missing standard tags** |
+| 10 | Governance & Policy | Policy assignments, expected standard policy checks, compliance, locks, custom roles, exemptions |
+| 11 | Tagging | Coverage per subscription, tag keys, expected standard tag checks |
 | 12 | Monitoring & Logging | Log Analytics, alerts, action groups, App Insights, diagnostics, query rules |
-| 13 | Cost Management | Budgets or flagged as missing |
+| 13 | Cost Management | Budget configuration and cost-management reference data |
 | 14 | Resource Groups | Full inventory |
 | 15 | Application Services | App Service Plans, Web Apps, Function Apps |
 | 16 | Databases | Azure SQL, Cosmos DB |
 | 17 | Containers | AKS, Container Registries |
-| 18 | Automation & Advisor | Automation Accounts, Runbooks, Advisor recommendations |
+| 18 | Automation & Operational References | Automation Accounts, Runbooks, Azure Advisor items |
 | 19 | Resource Summary | Resource Graph type counts |
 
-Plus: **Gap Analysis**, **Recommendations**, and **Operational Compliance Framework** sections.
-
-All status columns are colour-coded: red (critical), amber (warning), green (healthy).
+Status columns are colour-coded where useful to make current configuration states easier to scan.
 
 ---
 
 ## Output — Excel Workbook
 
-40+ sheets including all resource types, plus:
+40+ sheets including all collected resource types, plus supporting check outputs:
 
-- **GAP ANALYSIS** — All identified gaps with severity (colour-coded)
-- **RECOMMENDATIONS** — 30+ improvement recommendations
-- **OPERATIONAL COMPLIANCE** — 10-point compliance framework checklist
+- **GAP ANALYSIS** — Configuration check results from the collection script
+- **RECOMMENDATIONS** — Azure/script-generated supporting items, retained in Excel for reference
+- **OPERATIONAL COMPLIANCE** — Operational checklist output from the collection script
 
 ---
 
@@ -244,7 +242,7 @@ All status columns are colour-coded: red (critical), amber (warning), green (hea
 
 ## Configuration
 
-### `audit-config.json` — Gap Analysis Thresholds
+### `audit-config.json` — Collection Checks
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -307,7 +305,7 @@ Connect-MgGraph -Scopes "User.Read.All","Policy.Read.All" -TenantId "your-tenant
 ```
 
 ### Diagrams: sharp not available
-Normal in Cloud Shell. Diagrams output as SVG instead of PNG. Use `-Format svg` explicitly or the fallback is automatic.
+Normal in Cloud Shell for standalone diagrams. Diagrams output as SVG instead of PNG when `sharp` is unavailable. Word documents require PNG diagrams, so install local dependencies with `npm install` before running `Generate-BuildDocument.js` directly, or use `Build-AzureASISDocument.ps1`, which attempts to install `sharp` automatically and warns if diagrams cannot be embedded.
 
 ### Update to latest version
 ```powershell

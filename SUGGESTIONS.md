@@ -10,7 +10,7 @@ Azure tenancy audit and AS-IS build document generator. All suggestions below ha
 
 | ID | Title | Status | Implementation |
 |----|-------|--------|---------------|
-| C-1 | Add resume/checkpoint capability | Done | `-ResumeFrom` parameter + `Save-Checkpoint` after each section + `Test-SectionLoaded` skip logic |
+| C-1 | Add checkpoint capability | Done (resume removed) | `Save-Checkpoint` after each section as a crash artifact. Section-skip resume was removed: the Excel export/compliance checks depend on a complete in-memory dataset, so partial resumes cannot produce correct output. |
 | C-2 | Validate CustomerName for filesystem safety | Done | Validates against `[IO.Path]::GetInvalidFileNameChars()` and Excel sheet name restrictions |
 | C-3 | Handle Graph API failures gracefully | Done | Each Identity sub-collection has its own try/catch; partial data saved on failure |
 

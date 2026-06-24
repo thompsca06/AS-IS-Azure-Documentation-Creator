@@ -99,7 +99,8 @@ Connect-AzAccount
 | `Setup-CloudShell.ps1` | **Cloud Shell setup** — clone, install deps, verify environment |
 | `audit-config.json` | Configurable gap analysis thresholds |
 | `branding-config.json` | White-labelling (colours, fonts, company details) |
-| `Azure_AS-IS_Build_Document_Template.docx` | Blank Word template (manual use) |
+| `Documentation Template 04-26.dotx` | Branded Word template used as the base for generated docs (see Generate-BuildDocument.js) |
+| `Azure_AS-IS_Build_Document_Template.docx` | Legacy blank Word template (manual use) |
 
 ---
 
@@ -151,13 +152,12 @@ If you've already run the audit and just want to regenerate diagrams:
 node Generate-BuildDocument.js ".\AzureBuildDoc_Output\20260318_143000\Contoso_Azure_ASIS_Data.json"
 ```
 
-### Resume an Interrupted Audit
+### Checkpoints
 
-The audit saves checkpoints after each section. If interrupted:
-
-```powershell
-.\Invoke-AzureTenancyAudit.ps1 -CustomerName "Contoso" -ResumeFrom ".\AzureBuildDoc_Output\20260318_143000\_checkpoint.json"
-```
+The audit writes a `_checkpoint.json` after each section as a crash artifact for
+inspection. It is removed automatically on successful completion. Re-running the
+audit always performs a fresh, full collection (the export and compliance checks
+depend on a complete in-memory dataset, so partial resumes are not supported).
 
 ### Custom Gap Analysis Thresholds
 

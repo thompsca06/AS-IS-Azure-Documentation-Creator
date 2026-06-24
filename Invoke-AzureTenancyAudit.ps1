@@ -60,9 +60,7 @@ param(
     
     [string[]]$SubscriptionFilter,
 
-    [string]$ConfigPath,
-
-    [string]$ResumeFrom
+    [string]$ConfigPath
 )
 
 # ============================================================
@@ -119,8 +117,10 @@ if ($ConfigPath -and (Test-Path $ConfigPath)) {
 }
 
 # ============================================================
-# CHECKPOINT / RESUME FUNCTIONS
+# CHECKPOINT FUNCTION
 # ============================================================
+# Writes progress after each section as a crash artifact for debugging/inspection.
+# (The checkpoint is removed automatically on successful completion.)
 function Save-Checkpoint {
     try {
         $checkpointPath = Join-Path $OutputPath "_checkpoint.json"
@@ -129,11 +129,6 @@ function Save-Checkpoint {
     catch {
         Write-Host "[WARN] Failed to save checkpoint: $($_.Exception.Message)" -ForegroundColor Yellow
     }
-}
-
-function Test-SectionLoaded {
-    param([string]$SectionName)
-    return ($tenancyData.Sections.Contains($SectionName) -and $null -ne $tenancyData.Sections[$SectionName])
 }
 
 # ============================================================
@@ -170,26 +165,6 @@ $tenancyData = [ordered]@{
     Sections           = [ordered]@{}
     Gaps               = [System.Collections.ArrayList]::new()   # Track gaps/issues
     Recommendations    = [System.Collections.ArrayList]::new()   # Track recommendations
-}
-
-# Load checkpoint if resuming
-if ($ResumeFrom -and (Test-Path $ResumeFrom)) {
-    try {
-        $resumeData = Get-Content $ResumeFrom -Raw | ConvertFrom-Json
-        foreach ($prop in $resumeData.Sections.PSObject.Properties) {
-            $tenancyData.Sections[$prop.Name] = $prop.Value
-        }
-        if ($resumeData.Gaps) {
-            foreach ($g in $resumeData.Gaps) { $null = $tenancyData.Gaps.Add($g) }
-        }
-        if ($resumeData.Recommendations) {
-            foreach ($r in $resumeData.Recommendations) { $null = $tenancyData.Recommendations.Add($r) }
-        }
-        Write-Host "[OK] Resumed from checkpoint with $($tenancyData.Sections.Count) sections loaded" -ForegroundColor Green
-    }
-    catch {
-        Write-Warning "Failed to load checkpoint from '$ResumeFrom': $($_.Exception.Message). Starting fresh."
-    }
 }
 
 function Write-Status {
@@ -303,8 +278,8 @@ if ($SubscriptionFilter) {
     # Explicit filter provided via parameter
     $allSubs = $allSubs | Where-Object { $_.Id -in $SubscriptionFilter }
 }
-elseif ($allSubs.Count -gt 1) {
-    # Interactive selection when multiple subscriptions exist
+elseif ($allSubs.Count -gt 1 -and [Environment]::UserInteractive -and -not $env:ACC_CLOUD) {
+    # Interactive selection when multiple subscriptions exist (interactive sessions only)
     Write-Status "Subscriptions" "Found $($allSubs.Count) active subscriptions. Select which to audit..." "Info"
 
     $selectedSubs = $null
@@ -342,6 +317,10 @@ elseif ($allSubs.Count -gt 1) {
     else {
         Write-Status "Subscriptions" "No selection made - auditing all $($allSubs.Count) subscriptions" "Warning"
     }
+}
+elseif ($allSubs.Count -gt 1) {
+    # Non-interactive session (Cloud Shell, scheduled run, CI) - cannot prompt; audit everything
+    Write-Status "Subscriptions" "Non-interactive session detected - auditing all $($allSubs.Count) subscriptions. Use -SubscriptionFilter to scope." "Warning"
 }
 
 $subData = foreach ($sub in $allSubs) {
@@ -439,8 +418,8 @@ if ($IncludeEntra) {
             $rawApps = Get-MgApplication -All -Property DisplayName,AppId,SignInAudience,CreatedDateTime,PasswordCredentials,KeyCredentials
             foreach ($app in $rawApps) {
                 $expiredCreds = @()
-                foreach ($pwd in $app.PasswordCredentials) {
-                    if ($pwd.EndDateTime -lt (Get-Date)) { $expiredCreds += "Secret: $($pwd.DisplayName)" }
+                foreach ($cred in $app.PasswordCredentials) {
+                    if ($cred.EndDateTime -lt (Get-Date)) { $expiredCreds += "Secret: $($cred.DisplayName)" }
                 }
                 foreach ($key in $app.KeyCredentials) {
                     if ($key.EndDateTime -lt (Get-Date)) { $expiredCreds += "Cert: $($key.DisplayName)" }
@@ -616,7 +595,6 @@ $allConnections = [System.Collections.Generic.List[object]]::new()
 $allBastions = [System.Collections.Generic.List[object]]::new()
 $allPrivateDNSZones = [System.Collections.Generic.List[object]]::new()
 $allPublicIPs = [System.Collections.Generic.List[object]]::new()
-$allNVAs = [System.Collections.Generic.List[object]]::new()
 $allFirewalls = [System.Collections.Generic.List[object]]::new()
 $allAppGateways = [System.Collections.Generic.List[object]]::new()
 $allLoadBalancers = [System.Collections.Generic.List[object]]::new()
@@ -737,8 +715,11 @@ foreach ($sub in $allSubs) {
         }
     }
     
+    # Gateway cmdlets don't support listing across all RGs, so enumerate per resource group
+    $rgNames = (Get-AzResourceGroup -ErrorAction SilentlyContinue).ResourceGroupName
+
     # VPN Gateways
-    $vpnGws = Get-AzVirtualNetworkGateway -ResourceGroupName * -ErrorAction SilentlyContinue
+    $vpnGws = foreach ($rgName in $rgNames) { Get-AzVirtualNetworkGateway -ResourceGroupName $rgName -ErrorAction SilentlyContinue }
     foreach ($gw in $vpnGws) {
         $null = $allVPNGateways.Add([PSCustomObject]@{
             GatewayName      = $gw.Name
@@ -758,7 +739,7 @@ foreach ($sub in $allSubs) {
     }
     
     # Local Network Gateways
-    $lngs = Get-AzLocalNetworkGateway -ResourceGroupName * -ErrorAction SilentlyContinue
+    $lngs = foreach ($rgName in $rgNames) { Get-AzLocalNetworkGateway -ResourceGroupName $rgName -ErrorAction SilentlyContinue }
     foreach ($lng in $lngs) {
         $null = $allLocalNetGateways.Add([PSCustomObject]@{
             Name              = $lng.Name
@@ -772,7 +753,7 @@ foreach ($sub in $allSubs) {
     }
     
     # VPN Connections
-    $connections = Get-AzVirtualNetworkGatewayConnection -ResourceGroupName * -ErrorAction SilentlyContinue
+    $connections = foreach ($rgName in $rgNames) { Get-AzVirtualNetworkGatewayConnection -ResourceGroupName $rgName -ErrorAction SilentlyContinue }
     foreach ($conn in $connections) {
         $null = $allConnections.Add([PSCustomObject]@{
             ConnectionName    = $conn.Name
@@ -1030,7 +1011,6 @@ foreach ($sub in $allSubs) {
     $vms = Get-AzVM -Status
     foreach ($vm in $vms) {
         $vmDetail = Get-AzVM -ResourceGroupName $vm.ResourceGroupName -Name $vm.Name
-        $nics = @()
         $privateIPs = @()
         foreach ($nicRef in $vmDetail.NetworkProfile.NetworkInterfaces) {
             $nic = Get-AzNetworkInterface -ResourceId $nicRef.Id -ErrorAction SilentlyContinue
@@ -1046,7 +1026,7 @@ foreach ($sub in $allSubs) {
         $dataDisks = $vmDetail.StorageProfile.DataDisks
         $diskInfo = "OS: $($osDisk.ManagedDisk.StorageAccountType)"
         if ($dataDisks.Count -gt 0) {
-            $diskInfo += " | Data: " + ($dataDisks | ForEach-Object { "$($_.Name)($($_.DiskSizeGB)GB)" }) -join ", "
+            $diskInfo += " | Data: " + (($dataDisks | ForEach-Object { "$($_.Name)($($_.DiskSizeGB)GB)" }) -join ", ")
         }
         
         $null = $allVMs.Add([PSCustomObject]@{

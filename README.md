@@ -99,8 +99,7 @@ Connect-AzAccount
 | `Setup-CloudShell.ps1` | **Cloud Shell setup** — clone, install deps, verify environment |
 | `audit-config.json` | Configurable collection checks and expected standards |
 | `branding-config.json` | White-labelling (colours, fonts, company details) |
-| `Documentation Template 04-26.dotx` | Branded Word template for manual use; the current generator recreates styling in code |
-| `Azure_AS-IS_Build_Document_Template.docx` | Legacy blank Word template (manual use) |
+| `Documentation Template 04-26.dotx` | Branded Word template used as the package base for generated documents |
 
 ---
 

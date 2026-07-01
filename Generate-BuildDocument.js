@@ -18,6 +18,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const JSZip = require("jszip");
 const {
   Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell,
   Header, Footer, AlignmentType, LevelFormat, PageOrientation,
@@ -25,6 +26,8 @@ const {
   PageNumber, PageBreak, TabStopType, TabStopPosition
 } = require("docx");
 const { generateMgHierarchyDiagram, generateNetworkDiagram } = require("./Generate-Diagrams");
+const SCRIPT_DIR = path.dirname(process.argv[1] || __filename);
+const DOCUMENT_TEMPLATE_PATH = path.join(SCRIPT_DIR, "Documentation Template 04-26.dotx");
 
 // ============================================================
 // ARGS
@@ -81,7 +84,7 @@ const BRAND_DEFAULTS = {
 
 let brandCfg = BRAND_DEFAULTS;
 try {
-  const cfgPath = path.join(path.dirname(process.argv[1] || __filename), "branding-config.json");
+  const cfgPath = path.join(SCRIPT_DIR, "branding-config.json");
   if (fs.existsSync(cfgPath)) {
     const raw = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
     brandCfg = {
@@ -2139,6 +2142,117 @@ function makeSection(landscape, sectionChildren) {
   };
 }
 
+function attrValue(xml, name) {
+  const match = xml.match(new RegExp(`${name}="([^"]*)"`, "i"));
+  return match ? match[1] : "";
+}
+
+function nextRelationshipId(relsXml) {
+  let max = 0;
+  for (const match of relsXml.matchAll(/\bId="rId(\d+)"/g)) {
+    max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
+}
+
+function extractBodyContent(documentXml) {
+  const match = documentXml.match(/<w:body>([\s\S]*?)<\/w:body>/);
+  if (!match) throw new Error("Could not locate w:body in generated document.");
+  return match[1];
+}
+
+function removeFinalSectionProperties(bodyContent) {
+  const match = bodyContent.match(/\s*<w:sectPr[\s\S]*?<\/w:sectPr>\s*$/);
+  return match ? bodyContent.slice(0, match.index) : bodyContent;
+}
+
+function removeHeaderFooterReferences(xml) {
+  return xml
+    .replace(/<w:headerReference\b[^>]*\/>/g, "")
+    .replace(/<w:footerReference\b[^>]*\/>/g, "");
+}
+
+function replaceBodyContent(documentXml, bodyContent) {
+  return documentXml.replace(/<w:body>[\s\S]*?<\/w:body>/, `<w:body>${bodyContent}</w:body>`);
+}
+
+async function applyWordTemplate(generatedBuffer, templatePath) {
+  if (!fs.existsSync(templatePath)) {
+    console.warn(`Warning: Word template not found at ${templatePath}. Falling back to generated document package.`);
+    return generatedBuffer;
+  }
+
+  const templateZip = await JSZip.loadAsync(fs.readFileSync(templatePath));
+  const generatedZip = await JSZip.loadAsync(generatedBuffer);
+
+  const templateDocument = templateZip.file("word/document.xml");
+  const generatedDocument = generatedZip.file("word/document.xml");
+  if (!templateDocument || !generatedDocument) {
+    throw new Error("Template or generated document is missing word/document.xml.");
+  }
+
+  let templateDocumentXml = await templateDocument.async("string");
+  const generatedDocumentXml = await generatedDocument.async("string");
+  let bodyContent = removeFinalSectionProperties(extractBodyContent(generatedDocumentXml));
+  bodyContent = removeHeaderFooterReferences(bodyContent);
+
+  let templateRelsXml = templateZip.file("word/_rels/document.xml.rels")
+    ? await templateZip.file("word/_rels/document.xml.rels").async("string")
+    : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  const generatedRelsXml = generatedZip.file("word/_rels/document.xml.rels")
+    ? await generatedZip.file("word/_rels/document.xml.rels").async("string")
+    : "";
+
+  let nextRid = nextRelationshipId(templateRelsXml);
+  let copiedMedia = 1;
+  const relationshipEntries = generatedRelsXml.match(/<Relationship\b[^>]*\/>/g) || [];
+  for (const rel of relationshipEntries) {
+    const type = attrValue(rel, "Type");
+    if (!/\/image$/i.test(type) && !/\/hyperlink$/i.test(type)) continue;
+
+    const oldId = attrValue(rel, "Id");
+    const target = attrValue(rel, "Target");
+    const targetMode = attrValue(rel, "TargetMode");
+    const newId = `rId${nextRid++}`;
+    let newTarget = target;
+
+    if (/\/image$/i.test(type)) {
+      const sourcePath = target.startsWith("/") ? target.replace(/^\/+/, "") : `word/${target}`;
+      const sourceFile = generatedZip.file(sourcePath);
+      if (!sourceFile) continue;
+      const ext = path.extname(target).toLowerCase() || ".bin";
+      newTarget = `media/generated-${copiedMedia++}${ext}`;
+      templateZip.file(`word/${newTarget}`, await sourceFile.async("nodebuffer"));
+    }
+
+    const targetModeXml = targetMode ? ` TargetMode="${targetMode}"` : "";
+    templateRelsXml = templateRelsXml.replace(
+      "</Relationships>",
+      `<Relationship Id="${newId}" Type="${type}" Target="${newTarget}"${targetModeXml}/></Relationships>`
+    );
+    bodyContent = bodyContent
+      .replace(new RegExp(`r:embed="${oldId}"`, "g"), `r:embed="${newId}"`)
+      .replace(new RegExp(`r:link="${oldId}"`, "g"), `r:link="${newId}"`)
+      .replace(new RegExp(`r:id="${oldId}"`, "g"), `r:id="${newId}"`);
+  }
+
+  templateDocumentXml = replaceBodyContent(templateDocumentXml, bodyContent);
+  templateZip.file("word/document.xml", templateDocumentXml);
+  templateZip.file("word/_rels/document.xml.rels", templateRelsXml);
+
+  const contentTypes = templateZip.file("[Content_Types].xml");
+  if (contentTypes) {
+    const contentTypesXml = (await contentTypes.async("string"))
+      .replace(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+      );
+    templateZip.file("[Content_Types].xml", contentTypesXml);
+  }
+
+  return templateZip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
 // ---- Split children into portrait / landscape sections at diagram points ----
 const splitPoints = [];
 if (mgDiagramContent && mgDiagramSplitIdx >= 0)
@@ -2184,10 +2298,12 @@ const doc = new Document({
   sections: docSections,
 });
 
-const buffer = await Packer.toBuffer(doc);
+const generatedBuffer = await Packer.toBuffer(doc);
+const buffer = await applyWordTemplate(generatedBuffer, DOCUMENT_TEMPLATE_PATH);
 fs.writeFileSync(outputDocx, buffer);
 console.log(`\nDocument generated successfully!`);
 console.log(`Output: ${outputDocx}`);
+console.log(`Template: ${DOCUMENT_TEMPLATE_PATH}`);
 console.log(`Sections: 19`);
 console.log(`\nRemember to right-click the Table of Contents in Word and select "Update Field" to populate it.`);
 

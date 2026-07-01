@@ -10,7 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "docx": "^9.6.0"
+    "docx": "^9.6.0",
+    "jszip": "^3.10.1"
   },
   "optionalDependencies": {
     "sharp": "^0.34.5"

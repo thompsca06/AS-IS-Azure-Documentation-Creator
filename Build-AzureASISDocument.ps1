@@ -88,6 +88,15 @@ if ($docxCheck -ne "OK") {
 }
 Write-Host "[OK] docx module available" -ForegroundColor Green
 
+$jszipCheck = & node -e "try { require('jszip'); console.log('OK'); } catch(e) { console.log('MISSING'); }" 2>$null
+if ($jszipCheck -ne "OK") {
+    Write-Host "[INFO] Installing jszip npm module locally..." -ForegroundColor Yellow
+    Push-Location $scriptDir
+    & npm install jszip --save 2>$null
+    Pop-Location
+}
+Write-Host "[OK] jszip module available" -ForegroundColor Green
+
 $sharpCheck = & node -e "try { require('sharp'); console.log('OK'); } catch(e) { console.log('MISSING'); }" 2>$null
 if ($sharpCheck -ne "OK") {
     Write-Host "[INFO] Installing sharp npm module locally (required for Word-embedded PNG diagrams)..." -ForegroundColor Yellow
